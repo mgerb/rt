@@ -71,6 +71,11 @@ impl App {
             self.status_message = "FPS must be a number greater than 0.".to_string();
             return;
         };
+        let output_bitrate = self.output_bitrate_kbps.trim().to_string();
+        let Some(parsed_output_bitrate_kbps) = parse_output_bitrate_kbps(&output_bitrate) else {
+            self.status_message = "Bitrate must be a whole number greater than 0.".to_string();
+            return;
+        };
 
         let output_name = enforce_output_extension(output, self.output_format);
         self.output_name = output_name.clone();
@@ -117,8 +122,8 @@ impl App {
                 "libx264".to_string(),
                 "-preset".to_string(),
                 "veryfast".to_string(),
-                "-crf".to_string(),
-                "20".to_string(),
+                "-b:v".to_string(),
+                format!("{parsed_output_bitrate_kbps}k"),
                 "-pix_fmt".to_string(),
                 "yuv420p".to_string(),
                 "-r".to_string(),
@@ -207,4 +212,13 @@ pub(super) fn parse_output_fps(value: &str) -> Option<String> {
     }
 
     Some(trimmed.to_string())
+}
+
+fn parse_output_bitrate_kbps(value: &str) -> Option<u32> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    trimmed.parse::<u32>().ok().filter(|bitrate| *bitrate > 0)
 }

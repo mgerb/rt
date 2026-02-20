@@ -18,6 +18,7 @@ pub struct VideoStats {
     pub audio_codec: String,
     pub size: String,
     pub bitrate: String,
+    pub bitrate_kbps: Option<u32>,
 }
 
 pub fn is_video_file(path: &Path) -> bool {
@@ -216,11 +217,13 @@ pub fn probe_video_stats(path: &Path) -> io::Result<VideoStats> {
         .and_then(|value| value.parse::<u64>().ok())
         .map(format_bytes)
         .unwrap_or_else(|| "n/a".to_string());
-    let bitrate = stats_map
+    let bitrate_bits_per_second = stats_map
         .get("bit_rate")
-        .and_then(|value| value.parse::<u64>().ok())
+        .and_then(|value| value.parse::<u64>().ok());
+    let bitrate = bitrate_bits_per_second
         .map(format_bitrate)
         .unwrap_or_else(|| "n/a".to_string());
+    let bitrate_kbps = bitrate_bits_per_second.and_then(bitrate_kbps_from_bits_per_second);
 
     let audio_codec = probe_audio_codec(path).unwrap_or_else(|_| "n/a".to_string());
 
@@ -232,6 +235,7 @@ pub fn probe_video_stats(path: &Path) -> io::Result<VideoStats> {
         audio_codec,
         size,
         bitrate,
+        bitrate_kbps,
     })
 }
 
@@ -360,6 +364,15 @@ fn format_bitrate(bits_per_second: u64) -> String {
     } else {
         format!("{bits_per_second} bps")
     }
+}
+
+fn bitrate_kbps_from_bits_per_second(bits_per_second: u64) -> Option<u32> {
+    if bits_per_second == 0 {
+        return None;
+    }
+
+    let kbps = ((bits_per_second + 500) / 1_000).max(1);
+    u32::try_from(kbps).ok()
 }
 
 fn probe_audio_codec(path: &Path) -> io::Result<String> {

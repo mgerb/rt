@@ -38,6 +38,7 @@ pub enum InputField {
     End,
     Format,
     Fps,
+    Bitrate,
     RemoveAudio,
     Output,
 }

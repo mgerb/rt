@@ -120,6 +120,8 @@ impl App {
         self.selected_video_stats = probe_video_stats(&path).ok();
         self.output_fps = default_output_fps(self.selected_video_stats.as_ref());
         self.output_fps_cursor = self.output_fps.chars().count();
+        self.output_bitrate_kbps = default_output_bitrate_kbps(self.selected_video_stats.as_ref());
+        self.output_bitrate_cursor = self.output_bitrate_kbps.chars().count();
         self.remove_audio = false;
         self.sync_output_name_to_available_for_path(&path);
 
@@ -150,6 +152,7 @@ impl App {
         self.start_part = 0;
         self.end_part = 0;
         self.output_fps_cursor = self.output_fps.chars().count();
+        self.output_bitrate_cursor = self.output_bitrate_kbps.chars().count();
         self.output_cursor = self.output_name.chars().count();
         self.selected_video = Some(path);
     }
@@ -173,4 +176,11 @@ pub(super) fn read_entries(dir: &Path) -> io::Result<Vec<FileEntry>> {
 
     entries.sort_by_key(|entry| (!entry.is_dir, entry.name.to_ascii_lowercase()));
     Ok(entries)
+}
+
+fn default_output_bitrate_kbps(stats: Option<&crate::media::VideoStats>) -> String {
+    stats
+        .and_then(|stats| stats.bitrate_kbps)
+        .map(|bitrate| bitrate.to_string())
+        .unwrap_or_else(|| "8000".to_string())
 }
