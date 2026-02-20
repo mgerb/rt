@@ -1,22 +1,24 @@
 use std::{
     env, fs,
     fs::OpenOptions,
-    io,
     io::Write,
+    io::{self, BufReader, Read},
     path::{Path, PathBuf},
-    process::Command,
+    process::{Child, Command, ExitStatus, Stdio},
+    sync::mpsc::{self, Receiver},
+    thread,
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use crate::{
     media::{
-        VideoStats, collect_ffmpeg_lines, default_output_name, is_video_file, probe_video_stats,
-        probe_video_times, resolve_output_path, shell_quote, summarize_ffmpeg_error,
+        OUTPUT_FORMATS, VideoStats, default_output_name, enforce_output_extension, is_video_file,
+        output_format_for_path, probe_video_stats, probe_video_times, resolve_output_path,
+        shell_quote, summarize_ffmpeg_error,
     },
     model::{FileEntry, InputField, TimeInput, VideoBounds},
 };
 
-#[derive(Debug)]
 pub struct App {
     pub(crate) cwd: PathBuf,
     initial_dir: PathBuf,
@@ -25,10 +27,11 @@ pub struct App {
     pub(crate) selected_video: Option<PathBuf>,
     pub(crate) start_time: TimeInput,
     pub(crate) end_time: TimeInput,
+    pub(crate) output_format: &'static str,
     pub(crate) output_name: String,
     pub(crate) active_input: InputField,
-    pub(crate) start_cursor: usize,
-    pub(crate) end_cursor: usize,
+    pub(crate) start_part: usize,
+    pub(crate) end_part: usize,
     pub(crate) output_cursor: usize,
     pub(crate) selected_video_stats: Option<VideoStats>,
     selected_video_bounds: Option<VideoBounds>,
@@ -36,6 +39,30 @@ pub struct App {
     pub(crate) ffmpeg_output: Vec<String>,
     pub(crate) ffmpeg_scroll: usize,
     pub(crate) show_keybinds: bool,
+    pub(crate) ffmpeg_spinner_frame: usize,
+    running_trim: Option<RunningTrim>,
+}
+
+struct RunningTrim {
+    child: Child,
+    rx: Receiver<FfmpegEvent>,
+    command_line: String,
+    output_path: PathBuf,
+    stdout_raw: Vec<u8>,
+    stderr_raw: Vec<u8>,
+    stdout_pending: Vec<u8>,
+    stderr_pending: Vec<u8>,
+}
+
+#[derive(Clone, Copy)]
+enum FfmpegStream {
+    Stdout,
+    Stderr,
+}
+
+enum FfmpegEvent {
+    Chunk { stream: FfmpegStream, data: Vec<u8> },
+    ReaderError { stream: FfmpegStream, error: String },
 }
 
 impl App {
@@ -51,10 +78,11 @@ impl App {
             selected_video: None,
             start_time: TimeInput::zero(),
             end_time: TimeInput::zero(),
+            output_format: OUTPUT_FORMATS[0],
             output_name: String::new(),
             active_input: InputField::Start,
-            start_cursor: 0,
-            end_cursor: 0,
+            start_part: 0,
+            end_part: 0,
             output_cursor: 0,
             selected_video_stats: None,
             selected_video_bounds: None,
@@ -62,6 +90,8 @@ impl App {
             ffmpeg_output: vec!["ffmpeg output will appear here after trimming.".to_string()],
             ffmpeg_scroll: 0,
             show_keybinds: false,
+            ffmpeg_spinner_frame: 0,
+            running_trim: None,
         })
     }
 
@@ -71,6 +101,24 @@ impl App {
 
     pub fn hide_keybinds(&mut self) {
         self.show_keybinds = false;
+    }
+
+    pub fn tick(&mut self) {
+        if self.running_trim.is_none() {
+            return;
+        }
+
+        self.ffmpeg_spinner_frame = (self.ffmpeg_spinner_frame + 1) % spinner_frames().len();
+        self.pump_running_trim_events();
+        self.try_finish_running_trim();
+    }
+
+    pub fn ffmpeg_is_running(&self) -> bool {
+        self.running_trim.is_some()
+    }
+
+    pub fn ffmpeg_spinner_glyph(&self) -> char {
+        spinner_frames()[self.ffmpeg_spinner_frame]
     }
 
     pub fn next(&mut self) {
@@ -132,11 +180,57 @@ impl App {
     }
 
     pub fn next_input(&mut self) {
-        self.active_input = self.active_input.next();
+        match self.active_input {
+            InputField::Start => {
+                if self.start_part < 2 {
+                    self.start_part += 1;
+                } else {
+                    self.active_input = InputField::End;
+                    self.end_part = 0;
+                }
+            }
+            InputField::End => {
+                if self.end_part < 2 {
+                    self.end_part += 1;
+                } else {
+                    self.active_input = InputField::Format;
+                }
+            }
+            InputField::Format => {
+                self.active_input = InputField::Output;
+                self.output_cursor = self.output_name.chars().count();
+            }
+            InputField::Output => {
+                self.active_input = InputField::Start;
+                self.start_part = 0;
+            }
+        }
     }
 
     pub fn previous_input(&mut self) {
-        self.active_input = self.active_input.previous();
+        match self.active_input {
+            InputField::Start => {
+                if self.start_part > 0 {
+                    self.start_part -= 1;
+                } else {
+                    self.active_input = InputField::Output;
+                    self.output_cursor = self.output_name.chars().count();
+                }
+            }
+            InputField::End => {
+                if self.end_part > 0 {
+                    self.end_part -= 1;
+                } else {
+                    self.active_input = InputField::Start;
+                    self.start_part = 2;
+                }
+            }
+            InputField::Format => {
+                self.active_input = InputField::End;
+                self.end_part = 2;
+            }
+            InputField::Output => self.active_input = InputField::Format,
+        }
     }
 
     pub fn focus_output_name(&mut self) {
@@ -146,20 +240,20 @@ impl App {
 
     pub fn move_cursor_left(&mut self) {
         match self.active_input {
-            InputField::Start => self.start_cursor = self.start_cursor.saturating_sub(1),
-            InputField::End => self.end_cursor = self.end_cursor.saturating_sub(1),
+            InputField::Format => self.select_previous_output_format(),
             InputField::Output => self.output_cursor = self.output_cursor.saturating_sub(1),
+            _ => {}
         }
     }
 
     pub fn move_cursor_right(&mut self) {
         match self.active_input {
-            InputField::Start => self.start_cursor = (self.start_cursor + 1).min(5),
-            InputField::End => self.end_cursor = (self.end_cursor + 1).min(5),
+            InputField::Format => self.select_next_output_format(),
             InputField::Output => {
                 let max = self.output_name.chars().count();
                 self.output_cursor = (self.output_cursor + 1).min(max);
             }
+            _ => {}
         }
     }
 
@@ -167,16 +261,15 @@ impl App {
         match self.active_input {
             InputField::Start => {
                 if ch.is_ascii_digit() {
-                    self.start_time.set_digit_at(self.start_cursor, ch);
-                    self.start_cursor = (self.start_cursor + 1).min(5);
+                    self.start_time.push_digit_to_part(self.start_part, ch);
                 }
             }
             InputField::End => {
                 if ch.is_ascii_digit() {
-                    self.end_time.set_digit_at(self.end_cursor, ch);
-                    self.end_cursor = (self.end_cursor + 1).min(5);
+                    self.end_time.push_digit_to_part(self.end_part, ch);
                 }
             }
+            InputField::Format => {}
             InputField::Output => {
                 let byte_index = byte_index_for_char(&self.output_name, self.output_cursor);
                 self.output_name.insert(byte_index, ch);
@@ -188,17 +281,12 @@ impl App {
     pub fn backspace_active_input(&mut self) {
         match self.active_input {
             InputField::Start => {
-                if self.start_cursor > 0 {
-                    self.start_cursor -= 1;
-                }
-                self.start_time.set_digit_at(self.start_cursor, '0');
+                self.start_time.clear_part(self.start_part);
             }
             InputField::End => {
-                if self.end_cursor > 0 {
-                    self.end_cursor -= 1;
-                }
-                self.end_time.set_digit_at(self.end_cursor, '0');
+                self.end_time.clear_part(self.end_part);
             }
+            InputField::Format => {}
             InputField::Output => {
                 if self.output_cursor == 0 {
                     return;
@@ -213,6 +301,11 @@ impl App {
     }
 
     pub fn trim_selected_video(&mut self) {
+        if self.running_trim.is_some() {
+            self.status_message = "ffmpeg is already running. Wait for it to finish.".to_string();
+            return;
+        }
+
         let Some(input_path) = self.selected_video.clone() else {
             self.status_message = "No video selected. Choose one in the left pane.".to_string();
             return;
@@ -265,11 +358,15 @@ impl App {
             return;
         }
 
-        let output_path = resolve_output_path(&input_path, output);
+        let output_name = enforce_output_extension(output, self.output_format);
+        self.output_name = output_name.clone();
+        self.output_cursor = self.output_cursor.min(self.output_name.chars().count());
+
+        let output_path = resolve_output_path(&input_path, &output_name);
         self.status_message = format!("Running ffmpeg -> {}", output_path.display());
         self.ffmpeg_scroll = 0;
 
-        let ffmpeg_args = vec![
+        let mut ffmpeg_args = vec![
             "-y".to_string(),
             "-hide_banner".to_string(),
             "-ss".to_string(),
@@ -278,32 +375,48 @@ impl App {
             input_path.display().to_string(),
             "-t".to_string(),
             clip_duration.to_string(),
-            "-map".to_string(),
-            "0:v:0?".to_string(),
-            "-map".to_string(),
-            "0:a:0?".to_string(),
             "-sn".to_string(),
             "-dn".to_string(),
             "-fflags".to_string(),
             "+genpts".to_string(),
             "-avoid_negative_ts".to_string(),
             "make_zero".to_string(),
-            "-c:v".to_string(),
-            "libx264".to_string(),
-            "-preset".to_string(),
-            "veryfast".to_string(),
-            "-crf".to_string(),
-            "20".to_string(),
-            "-pix_fmt".to_string(),
-            "yuv420p".to_string(),
-            "-c:a".to_string(),
-            "aac".to_string(),
-            "-b:a".to_string(),
-            "192k".to_string(),
-            "-movflags".to_string(),
-            "+faststart".to_string(),
-            output_path.display().to_string(),
         ];
+
+        if self.output_format == "gif" {
+            ffmpeg_args.extend([
+                "-map".to_string(),
+                "0:v:0?".to_string(),
+                "-an".to_string(),
+                "-vf".to_string(),
+                "fps=12".to_string(),
+                "-loop".to_string(),
+                "0".to_string(),
+            ]);
+        } else {
+            ffmpeg_args.extend([
+                "-map".to_string(),
+                "0:v:0?".to_string(),
+                "-map".to_string(),
+                "0:a:0?".to_string(),
+                "-c:v".to_string(),
+                "libx264".to_string(),
+                "-preset".to_string(),
+                "veryfast".to_string(),
+                "-crf".to_string(),
+                "20".to_string(),
+                "-pix_fmt".to_string(),
+                "yuv420p".to_string(),
+                "-c:a".to_string(),
+                "aac".to_string(),
+                "-b:a".to_string(),
+                "192k".to_string(),
+                "-movflags".to_string(),
+                "+faststart".to_string(),
+            ]);
+        }
+
+        ffmpeg_args.push(output_path.display().to_string());
 
         let command_line = format!(
             "ffmpeg {}",
@@ -314,60 +427,9 @@ impl App {
                 .join(" ")
         );
 
-        self.ffmpeg_output = vec![format!("$ {command_line}"), "Running...".to_string()];
-        let result = Command::new("ffmpeg").args(&ffmpeg_args).output();
-
-        match result {
-            Ok(output_data) if output_data.status.success() => {
-                self.ffmpeg_output =
-                    collect_ffmpeg_lines(&command_line, &output_data.stdout, &output_data.stderr);
-                self.ffmpeg_scroll = 0;
-
-                match self.append_ffmpeg_run_log(
-                    &command_line,
-                    output_data.status.code(),
-                    &output_data.stdout,
-                    &output_data.stderr,
-                    None,
-                ) {
-                    Ok(log_path) => {
-                        self.status_message = format!(
-                            "Created clip: {} (log: {})",
-                            output_path.display(),
-                            log_path.display()
-                        );
-                    }
-                    Err(log_err) => {
-                        self.status_message = format!(
-                            "Created clip: {} (log write failed: {log_err})",
-                            output_path.display()
-                        );
-                    }
-                }
-            }
-            Ok(output_data) => {
-                self.ffmpeg_output =
-                    collect_ffmpeg_lines(&command_line, &output_data.stdout, &output_data.stderr);
-                self.ffmpeg_scroll = 0;
-                let stderr = String::from_utf8_lossy(&output_data.stderr);
-                let detail = summarize_ffmpeg_error(&stderr);
-
-                match self.append_ffmpeg_run_log(
-                    &command_line,
-                    output_data.status.code(),
-                    &output_data.stdout,
-                    &output_data.stderr,
-                    None,
-                ) {
-                    Ok(log_path) => {
-                        self.status_message =
-                            format!("ffmpeg failed: {detail} (log: {})", log_path.display());
-                    }
-                    Err(log_err) => {
-                        self.status_message =
-                            format!("ffmpeg failed: {detail} (log write failed: {log_err})");
-                    }
-                }
+        match self.start_ffmpeg_job(command_line.clone(), ffmpeg_args, output_path.clone()) {
+            Ok(()) => {
+                self.status_message = format!("Running ffmpeg -> {}", output_path.display());
             }
             Err(err) => {
                 self.ffmpeg_output = vec![
@@ -398,6 +460,193 @@ impl App {
         }
     }
 
+    fn start_ffmpeg_job(
+        &mut self,
+        command_line: String,
+        ffmpeg_args: Vec<String>,
+        output_path: PathBuf,
+    ) -> io::Result<()> {
+        let mut child = Command::new("ffmpeg")
+            .args(&ffmpeg_args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| io::Error::other("failed to capture ffmpeg stdout"))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| io::Error::other("failed to capture ffmpeg stderr"))?;
+
+        let (tx, rx) = mpsc::channel();
+        spawn_ffmpeg_reader(stdout, FfmpegStream::Stdout, tx.clone());
+        spawn_ffmpeg_reader(stderr, FfmpegStream::Stderr, tx);
+
+        self.ffmpeg_spinner_frame = 0;
+        self.ffmpeg_output = vec![
+            format!("$ {command_line}"),
+            "Streaming ffmpeg output...".to_string(),
+        ];
+        self.ffmpeg_scroll = self.ffmpeg_output.len().saturating_sub(1);
+        self.running_trim = Some(RunningTrim {
+            child,
+            rx,
+            command_line,
+            output_path,
+            stdout_raw: Vec::new(),
+            stderr_raw: Vec::new(),
+            stdout_pending: Vec::new(),
+            stderr_pending: Vec::new(),
+        });
+
+        Ok(())
+    }
+
+    fn pump_running_trim_events(&mut self) {
+        let mut streamed_lines = Vec::new();
+
+        if let Some(running) = self.running_trim.as_mut() {
+            while let Ok(event) = running.rx.try_recv() {
+                match event {
+                    FfmpegEvent::Chunk { stream, data } => {
+                        let lines = consume_stream_chunk(running, stream, &data);
+                        for line in lines {
+                            streamed_lines.push((stream, line));
+                        }
+                    }
+                    FfmpegEvent::ReaderError { stream, error } => {
+                        streamed_lines.push((stream, format!("reader error: {error}")));
+                    }
+                }
+            }
+        }
+
+        for (stream, line) in streamed_lines {
+            self.append_stream_line(stream, line);
+        }
+    }
+
+    fn try_finish_running_trim(&mut self) {
+        let Some(status_result) = self
+            .running_trim
+            .as_mut()
+            .map(|running| running.child.try_wait())
+        else {
+            return;
+        };
+
+        match status_result {
+            Ok(Some(status)) => self.finish_running_trim(status),
+            Ok(None) => {}
+            Err(err) => {
+                self.append_ffmpeg_output_line(format!("stderr: failed to poll ffmpeg: {err}"));
+                self.status_message = format!("Failed to monitor ffmpeg process: {err}");
+                self.running_trim = None;
+            }
+        }
+    }
+
+    fn finish_running_trim(&mut self, status: ExitStatus) {
+        let Some(mut running) = self.running_trim.take() else {
+            return;
+        };
+
+        while let Ok(event) = running.rx.try_recv() {
+            match event {
+                FfmpegEvent::Chunk { stream, data } => {
+                    for line in consume_stream_chunk(&mut running, stream, &data) {
+                        self.append_stream_line(stream, line);
+                    }
+                }
+                FfmpegEvent::ReaderError { stream, error } => {
+                    self.append_stream_line(stream, format!("reader error: {error}"));
+                }
+            }
+        }
+
+        if let Some(line) = flush_pending_line(&mut running.stderr_pending) {
+            self.append_stream_line(FfmpegStream::Stderr, line);
+        }
+        if let Some(line) = flush_pending_line(&mut running.stdout_pending) {
+            self.append_stream_line(FfmpegStream::Stdout, line);
+        }
+
+        let stdout_raw = running.stdout_raw;
+        let stderr_raw = running.stderr_raw;
+        let command_line = running.command_line;
+        let output_path = running.output_path;
+
+        if status.success() {
+            let mut status_message = match self.append_ffmpeg_run_log(
+                &command_line,
+                status.code(),
+                &stdout_raw,
+                &stderr_raw,
+                None,
+            ) {
+                Ok(log_path) => {
+                    format!(
+                        "Created clip: {} (log: {})",
+                        output_path.display(),
+                        log_path.display()
+                    )
+                }
+                Err(log_err) => {
+                    format!(
+                        "Created clip: {} (log write failed: {log_err})",
+                        output_path.display()
+                    )
+                }
+            };
+
+            if let Err(refresh_err) = self.refresh_file_browser_after_save(&output_path) {
+                status_message.push_str(&format!(" (browser refresh failed: {refresh_err})"));
+            }
+
+            self.status_message = status_message;
+        } else {
+            let stderr = String::from_utf8_lossy(&stderr_raw);
+            let detail = summarize_ffmpeg_error(&stderr);
+
+            match self.append_ffmpeg_run_log(
+                &command_line,
+                status.code(),
+                &stdout_raw,
+                &stderr_raw,
+                None,
+            ) {
+                Ok(log_path) => {
+                    self.status_message =
+                        format!("ffmpeg failed: {detail} (log: {})", log_path.display());
+                }
+                Err(log_err) => {
+                    self.status_message =
+                        format!("ffmpeg failed: {detail} (log write failed: {log_err})");
+                }
+            }
+        }
+    }
+
+    fn append_stream_line(&mut self, stream: FfmpegStream, line: String) {
+        let prefix = match stream {
+            FfmpegStream::Stdout => "stdout",
+            FfmpegStream::Stderr => "stderr",
+        };
+        self.append_ffmpeg_output_line(format!("{prefix}: {line}"));
+    }
+
+    fn append_ffmpeg_output_line(&mut self, line: String) {
+        let follow_tail = self.ffmpeg_scroll >= self.ffmpeg_output.len().saturating_sub(1);
+        self.ffmpeg_output.push(line);
+        if follow_tail {
+            self.ffmpeg_scroll = self.ffmpeg_output.len().saturating_sub(1);
+        }
+    }
+
     pub fn scroll_ffmpeg_output_down(&mut self) {
         let max_scroll = self.ffmpeg_output.len().saturating_sub(1);
         if self.ffmpeg_scroll < max_scroll {
@@ -417,8 +666,33 @@ impl App {
         Ok(())
     }
 
+    fn refresh_file_browser_after_save(&mut self, output_path: &Path) -> io::Result<()> {
+        self.reload()?;
+
+        let output_dir = output_path.parent().unwrap_or_else(|| Path::new("."));
+        if output_dir != self.cwd {
+            return Ok(());
+        }
+
+        let Some(output_name) = output_path.file_name().and_then(|name| name.to_str()) else {
+            return Ok(());
+        };
+
+        if let Some(index) = self
+            .entries
+            .iter()
+            .position(|entry| entry.name == output_name)
+        {
+            self.selected = index;
+        }
+
+        Ok(())
+    }
+
     fn select_video(&mut self, path: PathBuf) {
         self.output_name = default_output_name(&path);
+        self.output_format = output_format_for_path(&path);
+        self.output_name = enforce_output_extension(&self.output_name, self.output_format);
         self.selected_video_stats = probe_video_stats(&path).ok();
 
         match probe_video_times(&path) {
@@ -445,10 +719,43 @@ impl App {
         }
 
         self.active_input = InputField::Start;
-        self.start_cursor = 0;
-        self.end_cursor = 0;
+        self.start_part = 0;
+        self.end_part = 0;
         self.output_cursor = self.output_name.chars().count();
         self.selected_video = Some(path);
+    }
+
+    fn select_previous_output_format(&mut self) {
+        let current_index = OUTPUT_FORMATS
+            .iter()
+            .position(|format| *format == self.output_format)
+            .unwrap_or(0);
+        let next_index = if current_index == 0 {
+            OUTPUT_FORMATS.len() - 1
+        } else {
+            current_index - 1
+        };
+        self.output_format = OUTPUT_FORMATS[next_index];
+        self.sync_output_extension_to_selected_format();
+    }
+
+    fn select_next_output_format(&mut self) {
+        let current_index = OUTPUT_FORMATS
+            .iter()
+            .position(|format| *format == self.output_format)
+            .unwrap_or(0);
+        let next_index = (current_index + 1) % OUTPUT_FORMATS.len();
+        self.output_format = OUTPUT_FORMATS[next_index];
+        self.sync_output_extension_to_selected_format();
+    }
+
+    fn sync_output_extension_to_selected_format(&mut self) {
+        if self.output_name.trim().is_empty() {
+            return;
+        }
+
+        self.output_name = enforce_output_extension(&self.output_name, self.output_format);
+        self.output_cursor = self.output_cursor.min(self.output_name.chars().count());
     }
 
     fn append_ffmpeg_run_log(
@@ -530,4 +837,81 @@ fn byte_index_for_char(input: &str, char_index: usize) -> usize {
         .nth(char_index)
         .map(|(index, _)| index)
         .unwrap_or(input.len())
+}
+
+fn spinner_frames() -> &'static [char] {
+    &['|', '/', '-', '\\']
+}
+
+fn spawn_ffmpeg_reader<R>(reader: R, stream: FfmpegStream, tx: mpsc::Sender<FfmpegEvent>)
+where
+    R: Read + Send + 'static,
+{
+    thread::spawn(move || {
+        let mut reader = BufReader::new(reader);
+        let mut buf = [0_u8; 4096];
+
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) => break,
+                Ok(read) => {
+                    if tx
+                        .send(FfmpegEvent::Chunk {
+                            stream,
+                            data: buf[..read].to_vec(),
+                        })
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+                Err(err) => {
+                    let _ = tx.send(FfmpegEvent::ReaderError {
+                        stream,
+                        error: err.to_string(),
+                    });
+                    break;
+                }
+            }
+        }
+    });
+}
+
+fn consume_stream_chunk(
+    running: &mut RunningTrim,
+    stream: FfmpegStream,
+    data: &[u8],
+) -> Vec<String> {
+    let (raw, pending) = match stream {
+        FfmpegStream::Stdout => (&mut running.stdout_raw, &mut running.stdout_pending),
+        FfmpegStream::Stderr => (&mut running.stderr_raw, &mut running.stderr_pending),
+    };
+
+    raw.extend_from_slice(data);
+
+    let mut lines = Vec::new();
+    for &byte in data {
+        if byte == b'\n' || byte == b'\r' {
+            if let Some(line) = flush_pending_line(pending) {
+                lines.push(line);
+            }
+        } else {
+            pending.push(byte);
+        }
+    }
+
+    lines
+}
+
+fn flush_pending_line(pending: &mut Vec<u8>) -> Option<String> {
+    if pending.is_empty() {
+        return None;
+    }
+
+    let line = String::from_utf8_lossy(pending)
+        .trim_end_matches(['\n', '\r'])
+        .to_string();
+    pending.clear();
+
+    if line.is_empty() { None } else { Some(line) }
 }

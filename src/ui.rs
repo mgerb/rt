@@ -12,6 +12,8 @@ use crate::{
     model::{Focus, InputField, TimeInput},
 };
 
+const INPUT_LABEL_COL_WIDTH: usize = 11;
+
 pub fn render(frame: &mut Frame, app: &App, focus: Focus) {
     let [content, footer] =
         Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(frame.area());
@@ -78,11 +80,11 @@ fn render_trim_pane(frame: &mut Frame, app: &App, focus: Focus, area: ratatui::l
     lines.push(Line::from(""));
 
     if let Some(video) = &app.selected_video {
-        let start_active_cursor = (focus == Focus::RightTop
-            && app.active_input == InputField::Start)
-            .then_some(app.start_cursor);
-        let end_active_cursor = (focus == Focus::RightTop && app.active_input == InputField::End)
-            .then_some(app.end_cursor);
+        let start_active_part = (focus == Focus::RightTop && app.active_input == InputField::Start)
+            .then_some(app.start_part);
+        let end_active_part = (focus == Focus::RightTop && app.active_input == InputField::End)
+            .then_some(app.end_part);
+        let format_active = focus == Focus::RightTop && app.active_input == InputField::Format;
         let output_active_cursor = (focus == Focus::RightTop
             && app.active_input == InputField::Output)
             .then_some(app.output_cursor);
@@ -108,21 +110,26 @@ fn render_trim_pane(frame: &mut Frame, app: &App, focus: Focus, area: ratatui::l
             lines.push(trim_row("Stats", "unavailable".to_string()));
         }
         lines.push(Line::from(""));
+        lines.push(trim_separator());
+        lines.push(Line::from(""));
         lines.push(trim_section("TIME RANGE"));
+        lines.push(Line::from(""));
+        lines.push(input_hint_line("Format", "HH:MM:SS"));
         lines.push(Line::from(""));
         lines.push(time_input_line(
             "Start time",
             &app.start_time,
-            start_active_cursor,
+            start_active_part,
         ));
-        lines.push(time_input_line(
-            "End time",
-            &app.end_time,
-            end_active_cursor,
-        ));
+        lines.push(time_input_line("End time", &app.end_time, end_active_part));
         lines.push(Line::from(""));
         lines.push(trim_section("OUTPUT"));
         lines.push(Line::from(""));
+        lines.push(choice_input_line(
+            "Format",
+            app.output_format,
+            format_active,
+        ));
         lines.push(input_line("Output", &app.output_name, output_active_cursor));
         lines.push(Line::from(""));
     } else {
@@ -136,10 +143,6 @@ fn render_trim_pane(frame: &mut Frame, app: &App, focus: Focus, area: ratatui::l
         ));
         lines.push(Line::from(""));
     }
-
-    lines.push(trim_section("STATUS"));
-    lines.push(Line::from(""));
-    lines.push(Line::from(truncate_tail(&app.status_message, 96)));
 
     let details = Paragraph::new(lines)
         .block(
@@ -170,6 +173,16 @@ fn render_ffmpeg_output_pane(
         .map(Line::from)
         .collect::<Vec<_>>();
 
+    let title = if app.ffmpeg_is_running() {
+        format!(
+            "ffmpeg output {} running (scroll: {})",
+            app.ffmpeg_spinner_glyph(),
+            app.ffmpeg_scroll
+        )
+    } else {
+        format!("ffmpeg output (scroll: {})", app.ffmpeg_scroll)
+    };
+
     let ffmpeg_log = Paragraph::new(log_lines)
         .block(
             Block::default()
@@ -178,7 +191,7 @@ fn render_ffmpeg_output_pane(
                     focus == Focus::RightBottom,
                     Color::LightMagenta,
                 ))
-                .title(format!("ffmpeg output (scroll: {})", app.ffmpeg_scroll)),
+                .title(title),
         )
         .alignment(Alignment::Left)
         .wrap(Wrap { trim: false })
@@ -193,6 +206,13 @@ fn trim_section(title: &str) -> Line<'static> {
         Style::default()
             .fg(Color::Yellow)
             .add_modifier(Modifier::BOLD),
+    )
+}
+
+fn trim_separator() -> Line<'static> {
+    Line::styled(
+        "------------------------------------------------".to_string(),
+        Style::default().fg(Color::DarkGray),
     )
 }
 
@@ -245,10 +265,11 @@ fn render_keybinds_popup(frame: &mut Frame) {
         keybind_row("r", "refresh listing"),
         Line::from(""),
         keybind_section("TRIM PANEL"),
-        keybind_row("Tab / Shift+Tab", "move between Start/End/Output"),
-        keybind_row("h/l or Left/Right", "move cursor inside active field"),
-        keybind_row("Digits", "edit time fields at cursor"),
-        keybind_row("Backspace", "delete previous char / reset digit"),
+        keybind_row("Tab / Shift+Tab", "move through time pieces and fields"),
+        keybind_row("h/l", "cycle output format"),
+        keybind_row("Left/Right", "move output cursor"),
+        keybind_row("Digits", "edit selected time piece"),
+        keybind_row("Backspace", "clear time piece / delete output char"),
         keybind_row("Enter", "run ffmpeg trim"),
         Line::from(""),
         keybind_section("FFMPEG OUTPUT"),
@@ -297,12 +318,16 @@ fn render_footer_hint(frame: &mut Frame, area: ratatui::layout::Rect) {
 }
 
 fn input_line(label: &str, value: &str, active_cursor: Option<usize>) -> Line<'static> {
-    const LABEL_COL_WIDTH: usize = 11;
-    let label_cell = format!("{label:<LABEL_COL_WIDTH$}");
-    let row_active = active_cursor.is_some();
+    let label_cell = format!("{label:<INPUT_LABEL_COL_WIDTH$}");
+    let active = active_cursor.is_some();
+    let value_style = input_value_style(active);
+    let cursor_style = Style::default()
+        .fg(Color::Black)
+        .bg(Color::White)
+        .add_modifier(Modifier::BOLD);
 
     let mut spans = vec![
-        Span::styled(label_cell, input_label_style(row_active)),
+        Span::styled(label_cell, input_label_style(active)),
         Span::raw("  "),
     ];
 
@@ -310,45 +335,59 @@ fn input_line(label: &str, value: &str, active_cursor: Option<usize>) -> Line<'s
     let cursor = active_cursor.unwrap_or(0).min(chars.len());
 
     for (index, ch) in chars.iter().enumerate() {
-        let style = if row_active && index == cursor {
-            Style::default().add_modifier(Modifier::REVERSED)
+        let style = if active && index == cursor {
+            cursor_style
         } else {
-            Style::default()
+            value_style
         };
         spans.push(Span::styled(ch.to_string(), style));
     }
 
-    if row_active && cursor == chars.len() {
-        spans.push(Span::styled(
-            " ".to_string(),
-            Style::default().add_modifier(Modifier::REVERSED),
-        ));
+    if active && cursor == chars.len() {
+        spans.push(Span::styled(" ".to_string(), cursor_style));
     }
 
     Line::from(spans)
 }
 
-fn time_input_line(label: &str, value: &TimeInput, active_cursor: Option<usize>) -> Line<'static> {
-    const LABEL_COL_WIDTH: usize = 11;
-    let label_cell = format!("{label:<LABEL_COL_WIDTH$}");
-    let row_active = active_cursor.is_some();
+fn input_hint_line(label: &str, value: &str) -> Line<'static> {
+    let label_cell = format!("{label:<INPUT_LABEL_COL_WIDTH$}");
+    Line::from(vec![
+        Span::styled(
+            label_cell,
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("  "),
+        Span::styled(value.to_string(), Style::default().fg(Color::DarkGray)),
+    ])
+}
 
+fn choice_input_line(label: &str, value: &str, active: bool) -> Line<'static> {
+    let label_cell = format!("{label:<INPUT_LABEL_COL_WIDTH$}");
+
+    Line::from(vec![
+        Span::styled(label_cell, input_label_style(active)),
+        Span::raw("  "),
+        Span::styled(value.to_string(), input_value_style(active)),
+    ])
+}
+
+fn time_input_line(label: &str, value: &TimeInput, active_part: Option<usize>) -> Line<'static> {
+    let label_cell = format!("{label:<INPUT_LABEL_COL_WIDTH$}");
     let mut spans = vec![
-        Span::styled(label_cell, input_label_style(row_active)),
+        Span::styled(label_cell, input_label_style(false)),
         Span::raw("  "),
     ];
 
-    for index in 0..6 {
+    for part in 0..3 {
         spans.push(Span::styled(
-            value.digit_at(index).to_string(),
-            if active_cursor == Some(index) {
-                Style::default().add_modifier(Modifier::REVERSED)
-            } else {
-                Style::default()
-            },
+            value.part(part).to_string(),
+            time_part_style(active_part == Some(part)),
         ));
-        if index == 1 || index == 3 {
-            spans.push(Span::raw(":"));
+        if part < 2 {
+            spans.push(Span::styled(":".to_string(), input_value_style(false)));
         }
     }
 
@@ -358,12 +397,35 @@ fn time_input_line(label: &str, value: &TimeInput, active_cursor: Option<usize>)
 fn input_label_style(active: bool) -> Style {
     if active {
         Style::default()
-            .fg(Color::LightYellow)
-            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+            .fg(Color::Black)
+            .bg(Color::Gray)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default()
-            .fg(Color::Cyan)
+            .fg(Color::LightMagenta)
             .add_modifier(Modifier::BOLD)
+    }
+}
+
+fn input_value_style(active: bool) -> Style {
+    if active {
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Gray)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::White)
+    }
+}
+
+fn time_part_style(active: bool) -> Style {
+    if active {
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Gray)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::White)
     }
 }
 

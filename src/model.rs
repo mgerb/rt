@@ -36,25 +36,8 @@ impl Focus {
 pub enum InputField {
     Start,
     End,
+    Format,
     Output,
-}
-
-impl InputField {
-    pub fn next(self) -> Self {
-        match self {
-            Self::Start => Self::End,
-            Self::End => Self::Output,
-            Self::Output => Self::Start,
-        }
-    }
-
-    pub fn previous(self) -> Self {
-        match self {
-            Self::Start => Self::Output,
-            Self::End => Self::Start,
-            Self::Output => Self::End,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -103,39 +86,32 @@ impl TimeInput {
         minutes < 60 && seconds < 60
     }
 
-    pub fn set_digit_at(&mut self, index: usize, digit: char) {
+    pub fn part(&self, part_index: usize) -> &str {
+        match part_index {
+            0 => &self.hours,
+            1 => &self.minutes,
+            2 => &self.seconds,
+            _ => "00",
+        }
+    }
+
+    pub fn push_digit_to_part(&mut self, part_index: usize, digit: char) {
         if !digit.is_ascii_digit() {
             return;
         }
 
         self.ensure_two_digit_parts();
 
-        match index {
-            0 => self.hours.replace_range(0..1, &digit.to_string()),
-            1 => self.hours.replace_range(1..2, &digit.to_string()),
-            2 => self.minutes.replace_range(0..1, &digit.to_string()),
-            3 => self.minutes.replace_range(1..2, &digit.to_string()),
-            4 => self.seconds.replace_range(0..1, &digit.to_string()),
-            5 => self.seconds.replace_range(1..2, &digit.to_string()),
-            _ => {}
+        if let Some(part) = self.part_mut(part_index) {
+            let ones = part.chars().nth(1).unwrap_or('0');
+            *part = format!("{ones}{digit}");
         }
     }
 
-    pub fn digit_at(&self, index: usize) -> char {
-        let (part, offset) = match index {
-            0 => (&self.hours, 0),
-            1 => (&self.hours, 1),
-            2 => (&self.minutes, 0),
-            3 => (&self.minutes, 1),
-            4 => (&self.seconds, 0),
-            5 => (&self.seconds, 1),
-            _ => return '0',
-        };
-
-        part.as_bytes()
-            .get(offset)
-            .map(|byte| *byte as char)
-            .unwrap_or('0')
+    pub fn clear_part(&mut self, part_index: usize) {
+        if let Some(part) = self.part_mut(part_index) {
+            *part = "00".to_string();
+        }
     }
 
     fn ensure_two_digit_parts(&mut self) {
@@ -147,6 +123,15 @@ impl TimeInput {
         }
         if self.seconds.len() != 2 || !self.seconds.chars().all(|ch| ch.is_ascii_digit()) {
             self.seconds = "00".to_string();
+        }
+    }
+
+    fn part_mut(&mut self, part_index: usize) -> Option<&mut String> {
+        match part_index {
+            0 => Some(&mut self.hours),
+            1 => Some(&mut self.minutes),
+            2 => Some(&mut self.seconds),
+            _ => None,
         }
     }
 }
