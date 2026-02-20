@@ -29,11 +29,13 @@ pub struct App {
     pub(crate) start_time: TimeInput,
     pub(crate) end_time: TimeInput,
     pub(crate) output_format: &'static str,
+    pub(crate) output_fps: String,
     pub(crate) remove_audio: bool,
     pub(crate) output_name: String,
     pub(crate) active_input: InputField,
     pub(crate) start_part: usize,
     pub(crate) end_part: usize,
+    pub(crate) output_fps_cursor: usize,
     pub(crate) output_cursor: usize,
     pub(crate) selected_video_stats: Option<VideoStats>,
     selected_video_bounds: Option<VideoBounds>,
@@ -81,11 +83,13 @@ impl App {
             start_time: TimeInput::zero(),
             end_time: TimeInput::zero(),
             output_format: OUTPUT_FORMATS[0],
+            output_fps: "30".to_string(),
             remove_audio: false,
             output_name: String::new(),
             active_input: InputField::Start,
             start_part: 0,
             end_part: 0,
+            output_fps_cursor: 0,
             output_cursor: 0,
             selected_video_stats: None,
             selected_video_bounds: None,
@@ -200,6 +204,10 @@ impl App {
                 }
             }
             InputField::Format => {
+                self.active_input = InputField::Fps;
+                self.output_fps_cursor = self.output_fps.chars().count();
+            }
+            InputField::Fps => {
                 self.active_input = InputField::RemoveAudio;
             }
             InputField::RemoveAudio => {
@@ -235,7 +243,11 @@ impl App {
                 self.active_input = InputField::End;
                 self.end_part = 2;
             }
-            InputField::RemoveAudio => self.active_input = InputField::Format,
+            InputField::Fps => self.active_input = InputField::Format,
+            InputField::RemoveAudio => {
+                self.active_input = InputField::Fps;
+                self.output_fps_cursor = self.output_fps.chars().count();
+            }
             InputField::Output => self.active_input = InputField::RemoveAudio,
         }
     }
@@ -248,6 +260,7 @@ impl App {
     pub fn move_cursor_left(&mut self) {
         match self.active_input {
             InputField::Format => self.select_previous_output_format(),
+            InputField::Fps => self.output_fps_cursor = self.output_fps_cursor.saturating_sub(1),
             InputField::Output => self.output_cursor = self.output_cursor.saturating_sub(1),
             _ => {}
         }
@@ -256,6 +269,10 @@ impl App {
     pub fn move_cursor_right(&mut self) {
         match self.active_input {
             InputField::Format => self.select_next_output_format(),
+            InputField::Fps => {
+                let max = self.output_fps.chars().count();
+                self.output_fps_cursor = (self.output_fps_cursor + 1).min(max);
+            }
             InputField::Output => {
                 let max = self.output_name.chars().count();
                 self.output_cursor = (self.output_cursor + 1).min(max);
@@ -281,6 +298,13 @@ impl App {
                 }
             }
             InputField::Format => {}
+            InputField::Fps => {
+                if ch.is_ascii_digit() || (ch == '.' && !self.output_fps.contains('.')) {
+                    let byte_index = byte_index_for_char(&self.output_fps, self.output_fps_cursor);
+                    self.output_fps.insert(byte_index, ch);
+                    self.output_fps_cursor += 1;
+                }
+            }
             InputField::RemoveAudio => {
                 if ch == ' ' {
                     self.toggle_remove_audio();
@@ -303,6 +327,16 @@ impl App {
                 self.end_time.clear_part(self.end_part);
             }
             InputField::Format => {}
+            InputField::Fps => {
+                if self.output_fps_cursor == 0 {
+                    return;
+                }
+                let remove_char_index = self.output_fps_cursor - 1;
+                let start = byte_index_for_char(&self.output_fps, remove_char_index);
+                let end = byte_index_for_char(&self.output_fps, remove_char_index + 1);
+                self.output_fps.replace_range(start..end, "");
+                self.output_fps_cursor -= 1;
+            }
             InputField::RemoveAudio => {}
             InputField::Output => {
                 if self.output_cursor == 0 {
@@ -374,6 +408,11 @@ impl App {
             self.status_message = "Output file name is required.".to_string();
             return;
         }
+        let output_fps = self.output_fps.trim().to_string();
+        let Some(parsed_output_fps) = parse_output_fps(&output_fps) else {
+            self.status_message = "FPS must be a number greater than 0.".to_string();
+            return;
+        };
 
         let output_name = enforce_output_extension(output, self.output_format);
         self.output_name = output_name.clone();
@@ -408,7 +447,7 @@ impl App {
                 "0:v:0?".to_string(),
                 "-an".to_string(),
                 "-vf".to_string(),
-                "fps=12".to_string(),
+                format!("fps={parsed_output_fps}"),
                 "-loop".to_string(),
                 "0".to_string(),
             ]);
@@ -424,6 +463,8 @@ impl App {
                 "20".to_string(),
                 "-pix_fmt".to_string(),
                 "yuv420p".to_string(),
+                "-r".to_string(),
+                parsed_output_fps.clone(),
             ]);
             if self.remove_audio {
                 ffmpeg_args.push("-an".to_string());
@@ -716,9 +757,11 @@ impl App {
     fn select_video(&mut self, path: PathBuf) {
         self.output_name = default_output_name(&path);
         self.output_format = output_format_for_path(&path);
+        self.selected_video_stats = probe_video_stats(&path).ok();
+        self.output_fps = default_output_fps(self.selected_video_stats.as_ref());
+        self.output_fps_cursor = self.output_fps.chars().count();
         self.remove_audio = false;
         self.sync_output_name_to_available_for_path(&path);
-        self.selected_video_stats = probe_video_stats(&path).ok();
 
         match probe_video_times(&path) {
             Ok((start_time, end_time, bounds)) => {
@@ -746,6 +789,7 @@ impl App {
         self.active_input = InputField::Start;
         self.start_part = 0;
         self.end_part = 0;
+        self.output_fps_cursor = self.output_fps.chars().count();
         self.output_cursor = self.output_name.chars().count();
         self.selected_video = Some(path);
     }
@@ -892,6 +936,31 @@ fn byte_index_for_char(input: &str, char_index: usize) -> usize {
         .nth(char_index)
         .map(|(index, _)| index)
         .unwrap_or(input.len())
+}
+
+fn default_output_fps(stats: Option<&VideoStats>) -> String {
+    if let Some(fps) = stats
+        .map(|stats| stats.fps.trim())
+        .filter(|fps| parse_output_fps(fps).is_some())
+    {
+        fps.to_string()
+    } else {
+        "30".to_string()
+    }
+}
+
+fn parse_output_fps(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let parsed = trimmed.parse::<f64>().ok()?;
+    if !parsed.is_finite() || parsed <= 0.0 {
+        return None;
+    }
+
+    Some(trimmed.to_string())
 }
 
 fn spinner_frames() -> &'static [char] {
