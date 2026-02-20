@@ -13,8 +13,9 @@ use std::{
 use crate::{
     media::{
         OUTPUT_FORMATS, VideoStats, default_output_name, enforce_output_extension, is_video_file,
-        output_format_for_path, probe_video_stats, probe_video_times, resolve_output_path,
-        shell_quote, summarize_ffmpeg_error,
+        next_available_output_path, output_format_for_path, output_path_without_numbered_suffix,
+        probe_video_stats, probe_video_times, resolve_output_path, shell_quote,
+        summarize_ffmpeg_error,
     },
     model::{FileEntry, InputField, TimeInput, VideoBounds},
 };
@@ -28,6 +29,7 @@ pub struct App {
     pub(crate) start_time: TimeInput,
     pub(crate) end_time: TimeInput,
     pub(crate) output_format: &'static str,
+    pub(crate) remove_audio: bool,
     pub(crate) output_name: String,
     pub(crate) active_input: InputField,
     pub(crate) start_part: usize,
@@ -79,6 +81,7 @@ impl App {
             start_time: TimeInput::zero(),
             end_time: TimeInput::zero(),
             output_format: OUTPUT_FORMATS[0],
+            remove_audio: false,
             output_name: String::new(),
             active_input: InputField::Start,
             start_part: 0,
@@ -197,6 +200,9 @@ impl App {
                 }
             }
             InputField::Format => {
+                self.active_input = InputField::RemoveAudio;
+            }
+            InputField::RemoveAudio => {
                 self.active_input = InputField::Output;
                 self.output_cursor = self.output_name.chars().count();
             }
@@ -229,7 +235,8 @@ impl App {
                 self.active_input = InputField::End;
                 self.end_part = 2;
             }
-            InputField::Output => self.active_input = InputField::Format,
+            InputField::RemoveAudio => self.active_input = InputField::Format,
+            InputField::Output => self.active_input = InputField::RemoveAudio,
         }
     }
 
@@ -257,6 +264,10 @@ impl App {
         }
     }
 
+    pub fn toggle_remove_audio(&mut self) {
+        self.remove_audio = !self.remove_audio;
+    }
+
     pub fn push_active_input_char(&mut self, ch: char) {
         match self.active_input {
             InputField::Start => {
@@ -270,6 +281,11 @@ impl App {
                 }
             }
             InputField::Format => {}
+            InputField::RemoveAudio => {
+                if ch == ' ' {
+                    self.toggle_remove_audio();
+                }
+            }
             InputField::Output => {
                 let byte_index = byte_index_for_char(&self.output_name, self.output_cursor);
                 self.output_name.insert(byte_index, ch);
@@ -287,6 +303,7 @@ impl App {
                 self.end_time.clear_part(self.end_part);
             }
             InputField::Format => {}
+            InputField::RemoveAudio => {}
             InputField::Output => {
                 if self.output_cursor == 0 {
                     return;
@@ -362,7 +379,9 @@ impl App {
         self.output_name = output_name.clone();
         self.output_cursor = self.output_cursor.min(self.output_name.chars().count());
 
-        let output_path = resolve_output_path(&input_path, &output_name);
+        let requested_output_path = resolve_output_path(&input_path, &output_name);
+        let output_path = next_available_output_path(&requested_output_path);
+        self.sync_output_name_with_path(&output_name, &output_path);
         self.status_message = format!("Running ffmpeg -> {}", output_path.display());
         self.ffmpeg_scroll = 0;
 
@@ -397,8 +416,6 @@ impl App {
             ffmpeg_args.extend([
                 "-map".to_string(),
                 "0:v:0?".to_string(),
-                "-map".to_string(),
-                "0:a:0?".to_string(),
                 "-c:v".to_string(),
                 "libx264".to_string(),
                 "-preset".to_string(),
@@ -407,13 +424,20 @@ impl App {
                 "20".to_string(),
                 "-pix_fmt".to_string(),
                 "yuv420p".to_string(),
-                "-c:a".to_string(),
-                "aac".to_string(),
-                "-b:a".to_string(),
-                "192k".to_string(),
-                "-movflags".to_string(),
-                "+faststart".to_string(),
             ]);
+            if self.remove_audio {
+                ffmpeg_args.push("-an".to_string());
+            } else {
+                ffmpeg_args.extend([
+                    "-map".to_string(),
+                    "0:a:0?".to_string(),
+                    "-c:a".to_string(),
+                    "aac".to_string(),
+                    "-b:a".to_string(),
+                    "192k".to_string(),
+                ]);
+            }
+            ffmpeg_args.extend(["-movflags".to_string(), "+faststart".to_string()]);
         }
 
         ffmpeg_args.push(output_path.display().to_string());
@@ -692,7 +716,8 @@ impl App {
     fn select_video(&mut self, path: PathBuf) {
         self.output_name = default_output_name(&path);
         self.output_format = output_format_for_path(&path);
-        self.output_name = enforce_output_extension(&self.output_name, self.output_format);
+        self.remove_audio = false;
+        self.sync_output_name_to_available_for_path(&path);
         self.selected_video_stats = probe_video_stats(&path).ok();
 
         match probe_video_times(&path) {
@@ -754,8 +779,38 @@ impl App {
             return;
         }
 
+        if let Some(input_path) = self.selected_video.clone() {
+            self.sync_output_name_to_available_for_path(&input_path);
+            return;
+        }
+
         self.output_name = enforce_output_extension(&self.output_name, self.output_format);
         self.output_cursor = self.output_cursor.min(self.output_name.chars().count());
+    }
+
+    fn sync_output_name_to_available_for_path(&mut self, input_path: &Path) {
+        let requested_output_name = enforce_output_extension(&self.output_name, self.output_format);
+        let requested_output_path = resolve_output_path(input_path, &requested_output_name);
+        let normalized_output_path = output_path_without_numbered_suffix(&requested_output_path);
+        let available_output_path = next_available_output_path(&normalized_output_path);
+        self.sync_output_name_with_path(&requested_output_name, &available_output_path);
+    }
+
+    fn sync_output_name_with_path(&mut self, requested_output_name: &str, resolved_path: &Path) {
+        let requested = Path::new(requested_output_name);
+        let requested_has_path = requested.is_absolute()
+            || requested_output_name.contains('/')
+            || requested_output_name.contains('\\');
+
+        self.output_name = if requested_has_path {
+            resolved_path.display().to_string()
+        } else {
+            resolved_path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| resolved_path.display().to_string())
+        };
+        self.output_cursor = self.output_name.chars().count();
     }
 
     fn append_ffmpeg_run_log(

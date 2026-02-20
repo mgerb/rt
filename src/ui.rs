@@ -85,6 +85,8 @@ fn render_trim_pane(frame: &mut Frame, app: &App, focus: Focus, area: ratatui::l
         let end_active_part = (focus == Focus::RightTop && app.active_input == InputField::End)
             .then_some(app.end_part);
         let format_active = focus == Focus::RightTop && app.active_input == InputField::Format;
+        let remove_audio_active =
+            focus == Focus::RightTop && app.active_input == InputField::RemoveAudio;
         let output_active_cursor = (focus == Focus::RightTop
             && app.active_input == InputField::Output)
             .then_some(app.output_cursor);
@@ -129,6 +131,11 @@ fn render_trim_pane(frame: &mut Frame, app: &App, focus: Focus, area: ratatui::l
             "Format",
             app.output_format,
             format_active,
+        ));
+        lines.push(checkbox_input_line(
+            "Remove audio",
+            app.remove_audio,
+            remove_audio_active,
         ));
         lines.push(input_line("Output", &app.output_name, output_active_cursor));
         lines.push(Line::from(""));
@@ -268,6 +275,7 @@ fn render_keybinds_popup(frame: &mut Frame) {
         keybind_row("Tab / Shift+Tab", "move through time pieces and fields"),
         keybind_row("h/l", "cycle output format"),
         keybind_row("Left/Right", "move output cursor"),
+        keybind_row("Space", "toggle remove-audio checkbox"),
         keybind_row("Digits", "edit selected time piece"),
         keybind_row("Backspace", "clear time piece / delete output char"),
         keybind_row("Enter", "run ffmpeg trim"),
@@ -371,6 +379,17 @@ fn choice_input_line(label: &str, value: &str, active: bool) -> Line<'static> {
         Span::styled(label_cell, input_label_style(active)),
         Span::raw("  "),
         Span::styled(value.to_string(), input_value_style(active)),
+    ])
+}
+
+fn checkbox_input_line(label: &str, checked: bool, active: bool) -> Line<'static> {
+    let label_cell = format!("{label:<INPUT_LABEL_COL_WIDTH$}");
+    let mark = if checked { "[x]" } else { "[ ]" };
+
+    Line::from(vec![
+        Span::styled(label_cell, input_label_style(active)),
+        Span::raw("  "),
+        Span::styled(mark.to_string(), input_value_style(active)),
     ])
 }
 
