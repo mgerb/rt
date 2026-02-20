@@ -1,9 +1,9 @@
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Layout},
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
 };
 
 use crate::{
@@ -13,15 +13,20 @@ use crate::{
 };
 
 pub fn render(frame: &mut Frame, app: &App, focus: Focus) {
+    let [content, footer] =
+        Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(frame.area());
     let [left, right] =
-        Layout::horizontal([Constraint::Percentage(34), Constraint::Percentage(66)])
-            .areas(frame.area());
+        Layout::horizontal([Constraint::Percentage(34), Constraint::Percentage(66)]).areas(content);
     let [right_top, right_bottom] =
         Layout::vertical([Constraint::Min(12), Constraint::Length(10)]).areas(right);
 
     render_files_pane(frame, app, focus, left);
     render_trim_pane(frame, app, focus, right_top);
     render_ffmpeg_output_pane(frame, app, focus, right_bottom);
+    render_footer_hint(frame, footer);
+    if app.show_keybinds {
+        render_keybinds_popup(frame);
+    }
 }
 
 fn render_files_pane(frame: &mut Frame, app: &App, focus: Focus, area: ratatui::layout::Rect) {
@@ -36,7 +41,12 @@ fn render_files_pane(frame: &mut Frame, app: &App, focus: Focus, area: ratatui::
             } else {
                 "[F] "
             };
-            ListItem::new(format!("{prefix}{}", entry.name))
+            let line = format!("{prefix}{}", entry.name);
+            if is_video_file(&entry.path) {
+                ListItem::new(Line::styled(line, Style::default().fg(Color::LightGreen)))
+            } else {
+                ListItem::new(line)
+            }
         })
         .collect::<Vec<_>>();
 
@@ -92,15 +102,6 @@ fn render_trim_pane(frame: &mut Frame, app: &App, focus: Focus, area: ratatui::l
         lines.push(time_input_line("Start time", &app.start_time, start_active));
         lines.push(time_input_line("End time", &app.end_time, end_active));
         lines.push(input_line("Output", &app.output_name, output_active));
-        lines.push(Line::from(""));
-        lines.push(Line::from(
-            "Tab/Shift+Tab: move between time sections and output",
-        ));
-        lines.push(Line::from("Type digits for time sections"));
-        lines.push(Line::from("Enter: run ffmpeg trim"));
-        lines.push(Line::from("Ctrl+h / Ctrl+l: switch columns"));
-        lines.push(Line::from("Ctrl+j / Ctrl+k: move between windows"));
-        lines.push(Line::from("ffmpeg output pane: j/k or Up/Down to scroll"));
         lines.push(Line::from(""));
     } else {
         lines.push(Line::from(
@@ -160,6 +161,88 @@ fn render_ffmpeg_output_pane(
         .scroll((app.ffmpeg_scroll.min(u16::MAX as usize) as u16, 0));
 
     frame.render_widget(ffmpeg_log, area);
+}
+
+fn render_keybinds_popup(frame: &mut Frame) {
+    let outer = frame.area();
+    let [vertical] = Layout::vertical([Constraint::Percentage(70)])
+        .flex(ratatui::layout::Flex::Center)
+        .areas(outer);
+    let [popup] = Layout::horizontal([Constraint::Percentage(70)])
+        .flex(ratatui::layout::Flex::Center)
+        .areas(vertical);
+
+    frame.render_widget(Clear, popup);
+
+    let lines = vec![
+        Line::from("Press ? or Esc to close this window."),
+        Line::from(""),
+        keybind_section("GLOBAL"),
+        keybind_row("?", "toggle keybinds popup"),
+        keybind_row("Esc", "close popup / quit app"),
+        keybind_row("Ctrl+c", "quit app"),
+        Line::from(""),
+        keybind_section("WINDOW FOCUS"),
+        keybind_row("Ctrl+h", "focus left browser"),
+        keybind_row("Ctrl+l", "focus trim panel"),
+        keybind_row("Ctrl+j / Ctrl+k", "move window focus"),
+        Line::from(""),
+        keybind_section("LEFT BROWSER"),
+        keybind_row("j/k or Up/Down", "move selection"),
+        keybind_row("Enter or l/Right", "open dir or select video"),
+        keybind_row("h/Left/Backspace/-", "parent directory"),
+        keybind_row("_", "initial directory"),
+        keybind_row("r", "refresh listing"),
+        Line::from(""),
+        keybind_section("TRIM PANEL"),
+        keybind_row("Tab / Shift+Tab", "move input section"),
+        keybind_row("Digits", "edit time fields"),
+        keybind_row("Backspace", "edit active field"),
+        keybind_row("Enter", "run ffmpeg trim"),
+        Line::from(""),
+        keybind_section("FFMPEG OUTPUT"),
+        keybind_row("j/k or Up/Down", "scroll output"),
+    ];
+
+    let popup_widget = Paragraph::new(lines)
+        .block(Block::default().borders(Borders::ALL).title("Keybinds"))
+        .wrap(Wrap { trim: true })
+        .alignment(Alignment::Left);
+
+    frame.render_widget(popup_widget, popup);
+}
+
+fn keybind_section(title: &str) -> Line<'static> {
+    Line::styled(
+        title.to_string(),
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
+    )
+}
+
+fn keybind_row(keys: &str, action: &str) -> Line<'static> {
+    const KEY_COL_WIDTH: usize = 24;
+    let keys_padded = format!("{keys:<KEY_COL_WIDTH$}");
+    Line::from(vec![
+        Span::styled(
+            keys_padded,
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("  "),
+        Span::raw(action.to_string()),
+    ])
+}
+
+fn render_footer_hint(frame: &mut Frame, area: ratatui::layout::Rect) {
+    let hint = Paragraph::new(Line::styled(
+        "Press ? to see keyboard shortcuts",
+        Style::default().fg(Color::DarkGray),
+    ))
+    .alignment(Alignment::Left);
+    frame.render_widget(hint, area);
 }
 
 fn input_line(label: &str, value: &str, active: bool) -> Line<'static> {
