@@ -9,7 +9,7 @@ use ratatui::{
 use crate::{
     app::App,
     media::is_video_file,
-    model::{Focus, InputField, TimeInput, TimeSection},
+    model::{Focus, InputField, TimeInput},
 };
 
 pub fn render(frame: &mut Frame, app: &App, focus: Focus) {
@@ -17,8 +17,12 @@ pub fn render(frame: &mut Frame, app: &App, focus: Focus) {
         Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(frame.area());
     let [left, right] =
         Layout::horizontal([Constraint::Percentage(34), Constraint::Percentage(66)]).areas(content);
-    let [right_top, right_bottom] =
-        Layout::vertical([Constraint::Min(12), Constraint::Length(10)]).areas(right);
+    let right_constraints = if focus == Focus::RightBottom {
+        [Constraint::Percentage(30), Constraint::Percentage(70)]
+    } else {
+        [Constraint::Min(0), Constraint::Length(8)]
+    };
+    let [right_top, right_bottom] = Layout::vertical(right_constraints).areas(right);
 
     render_files_pane(frame, app, focus, left);
     render_trim_pane(frame, app, focus, right_top);
@@ -59,11 +63,7 @@ fn render_files_pane(frame: &mut Frame, app: &App, focus: Focus, area: ratatui::
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(if focus == Focus::Left {
-                    Style::default().add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default()
-                })
+                .border_style(pane_border_style(focus == Focus::Left, Color::LightBlue))
                 .title(format!("Files: {}", app.cwd.display())),
         )
         .highlight_symbol("> ")
@@ -74,36 +74,60 @@ fn render_files_pane(frame: &mut Frame, app: &App, focus: Focus, area: ratatui::
 
 fn render_trim_pane(frame: &mut Frame, app: &App, focus: Focus, area: ratatui::layout::Rect) {
     let mut lines = Vec::new();
-    lines.push(Line::from("ffmpeg clip trimmer"));
+    lines.push(trim_section("CLIP SETUP"));
     lines.push(Line::from(""));
 
     if let Some(video) = &app.selected_video {
-        let start_active = if focus == Focus::RightTop {
-            match app.active_input {
-                InputField::Start(section) => Some(section),
-                _ => None,
-            }
+        let start_active_cursor = (focus == Focus::RightTop
+            && app.active_input == InputField::Start)
+            .then_some(app.start_cursor);
+        let end_active_cursor = (focus == Focus::RightTop && app.active_input == InputField::End)
+            .then_some(app.end_cursor);
+        let output_active_cursor = (focus == Focus::RightTop
+            && app.active_input == InputField::Output)
+            .then_some(app.output_cursor);
+
+        let filename = video
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| video.display().to_string());
+        lines.push(trim_row("Video", filename));
+        lines.push(trim_row("Path", video.display().to_string()));
+        lines.push(Line::from(""));
+        lines.push(trim_section("VIDEO STATS"));
+        lines.push(Line::from(""));
+        if let Some(stats) = &app.selected_video_stats {
+            lines.push(trim_row("Duration", stats.duration.clone()));
+            lines.push(trim_row("Resolution", stats.resolution.clone()));
+            lines.push(trim_row("FPS", stats.fps.clone()));
+            lines.push(trim_row("Video", stats.video_codec.clone()));
+            lines.push(trim_row("Audio", stats.audio_codec.clone()));
+            lines.push(trim_row("Size", stats.size.clone()));
+            lines.push(trim_row("Bitrate", stats.bitrate.clone()));
         } else {
-            None
-        };
-
-        let end_active = if focus == Focus::RightTop {
-            match app.active_input {
-                InputField::End(section) => Some(section),
-                _ => None,
-            }
-        } else {
-            None
-        };
-
-        let output_active = focus == Focus::RightTop && app.active_input == InputField::Output;
-
-        lines.push(Line::from(format!("Input file: {}", video.display())));
-        lines.push(time_input_line("Start time", &app.start_time, start_active));
-        lines.push(time_input_line("End time", &app.end_time, end_active));
-        lines.push(input_line("Output", &app.output_name, output_active));
+            lines.push(trim_row("Stats", "unavailable".to_string()));
+        }
+        lines.push(Line::from(""));
+        lines.push(trim_section("TIME RANGE"));
+        lines.push(Line::from(""));
+        lines.push(time_input_line(
+            "Start time",
+            &app.start_time,
+            start_active_cursor,
+        ));
+        lines.push(time_input_line(
+            "End time",
+            &app.end_time,
+            end_active_cursor,
+        ));
+        lines.push(Line::from(""));
+        lines.push(trim_section("OUTPUT"));
+        lines.push(Line::from(""));
+        lines.push(input_line("Output", &app.output_name, output_active_cursor));
         lines.push(Line::from(""));
     } else {
+        lines.push(trim_section("NO VIDEO SELECTED"));
+        lines.push(Line::from(""));
         lines.push(Line::from(
             "Select a video in the left pane and press Enter.",
         ));
@@ -113,17 +137,18 @@ fn render_trim_pane(frame: &mut Frame, app: &App, focus: Focus, area: ratatui::l
         lines.push(Line::from(""));
     }
 
-    lines.push(Line::from(format!("Status: {}", app.status_message)));
+    lines.push(trim_section("STATUS"));
+    lines.push(Line::from(""));
+    lines.push(Line::from(truncate_tail(&app.status_message, 96)));
 
     let details = Paragraph::new(lines)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(if focus == Focus::RightTop {
-                    Style::default().add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default()
-                })
+                .border_style(pane_border_style(
+                    focus == Focus::RightTop,
+                    Color::LightYellow,
+                ))
                 .title("Trim"),
         )
         .alignment(Alignment::Left)
@@ -149,11 +174,10 @@ fn render_ffmpeg_output_pane(
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(if focus == Focus::RightBottom {
-                    Style::default().add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default()
-                })
+                .border_style(pane_border_style(
+                    focus == Focus::RightBottom,
+                    Color::LightMagenta,
+                ))
                 .title(format!("ffmpeg output (scroll: {})", app.ffmpeg_scroll)),
         )
         .alignment(Alignment::Left)
@@ -161,6 +185,31 @@ fn render_ffmpeg_output_pane(
         .scroll((app.ffmpeg_scroll.min(u16::MAX as usize) as u16, 0));
 
     frame.render_widget(ffmpeg_log, area);
+}
+
+fn trim_section(title: &str) -> Line<'static> {
+    Line::styled(
+        title.to_string(),
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
+    )
+}
+
+fn trim_row(label: &str, value: String) -> Line<'static> {
+    const LABEL_COL_WIDTH: usize = 10;
+    const VALUE_MAX_CHARS: usize = 64;
+    let label_cell = format!("{label:<LABEL_COL_WIDTH$}");
+    Line::from(vec![
+        Span::styled(
+            label_cell,
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("  "),
+        Span::raw(truncate_tail(&value, VALUE_MAX_CHARS)),
+    ])
 }
 
 fn render_keybinds_popup(frame: &mut Frame) {
@@ -186,6 +235,7 @@ fn render_keybinds_popup(frame: &mut Frame) {
         keybind_row("Ctrl+h", "focus left browser"),
         keybind_row("Ctrl+l", "focus trim panel"),
         keybind_row("Ctrl+j / Ctrl+k", "move window focus"),
+        keybind_row("Ctrl+o", "jump to output filename field"),
         Line::from(""),
         keybind_section("LEFT BROWSER"),
         keybind_row("j/k or Up/Down", "move selection"),
@@ -195,9 +245,10 @@ fn render_keybinds_popup(frame: &mut Frame) {
         keybind_row("r", "refresh listing"),
         Line::from(""),
         keybind_section("TRIM PANEL"),
-        keybind_row("Tab / Shift+Tab", "move input section"),
-        keybind_row("Digits", "edit time fields"),
-        keybind_row("Backspace", "edit active field"),
+        keybind_row("Tab / Shift+Tab", "move between Start/End/Output"),
+        keybind_row("h/l or Left/Right", "move cursor inside active field"),
+        keybind_row("Digits", "edit time fields at cursor"),
+        keybind_row("Backspace", "delete previous char / reset digit"),
         keybind_row("Enter", "run ffmpeg trim"),
         Line::from(""),
         keybind_section("FFMPEG OUTPUT"),
@@ -245,43 +296,105 @@ fn render_footer_hint(frame: &mut Frame, area: ratatui::layout::Rect) {
     frame.render_widget(hint, area);
 }
 
-fn input_line(label: &str, value: &str, active: bool) -> Line<'static> {
-    let input_style = if active {
-        Style::default().add_modifier(Modifier::REVERSED)
-    } else {
-        Style::default()
-    };
+fn input_line(label: &str, value: &str, active_cursor: Option<usize>) -> Line<'static> {
+    const LABEL_COL_WIDTH: usize = 11;
+    let label_cell = format!("{label:<LABEL_COL_WIDTH$}");
+    let row_active = active_cursor.is_some();
 
-    Line::from(vec![
-        Span::raw(format!("{label}: ")),
-        Span::styled(value.to_string(), input_style),
-    ])
-}
+    let mut spans = vec![
+        Span::styled(label_cell, input_label_style(row_active)),
+        Span::raw("  "),
+    ];
 
-fn time_input_line(label: &str, value: &TimeInput, active: Option<TimeSection>) -> Line<'static> {
-    let style_for = |section: TimeSection| {
-        if active == Some(section) {
+    let chars = value.chars().collect::<Vec<_>>();
+    let cursor = active_cursor.unwrap_or(0).min(chars.len());
+
+    for (index, ch) in chars.iter().enumerate() {
+        let style = if row_active && index == cursor {
             Style::default().add_modifier(Modifier::REVERSED)
         } else {
             Style::default()
-        }
-    };
+        };
+        spans.push(Span::styled(ch.to_string(), style));
+    }
 
-    Line::from(vec![
-        Span::raw(format!("{label}: ")),
-        Span::styled(
-            value.part(TimeSection::Hours).to_string(),
-            style_for(TimeSection::Hours),
-        ),
-        Span::raw(":"),
-        Span::styled(
-            value.part(TimeSection::Minutes).to_string(),
-            style_for(TimeSection::Minutes),
-        ),
-        Span::raw(":"),
-        Span::styled(
-            value.part(TimeSection::Seconds).to_string(),
-            style_for(TimeSection::Seconds),
-        ),
-    ])
+    if row_active && cursor == chars.len() {
+        spans.push(Span::styled(
+            " ".to_string(),
+            Style::default().add_modifier(Modifier::REVERSED),
+        ));
+    }
+
+    Line::from(spans)
+}
+
+fn time_input_line(label: &str, value: &TimeInput, active_cursor: Option<usize>) -> Line<'static> {
+    const LABEL_COL_WIDTH: usize = 11;
+    let label_cell = format!("{label:<LABEL_COL_WIDTH$}");
+    let row_active = active_cursor.is_some();
+
+    let mut spans = vec![
+        Span::styled(label_cell, input_label_style(row_active)),
+        Span::raw("  "),
+    ];
+
+    for index in 0..6 {
+        spans.push(Span::styled(
+            value.digit_at(index).to_string(),
+            if active_cursor == Some(index) {
+                Style::default().add_modifier(Modifier::REVERSED)
+            } else {
+                Style::default()
+            },
+        ));
+        if index == 1 || index == 3 {
+            spans.push(Span::raw(":"));
+        }
+    }
+
+    Line::from(spans)
+}
+
+fn input_label_style(active: bool) -> Style {
+    if active {
+        Style::default()
+            .fg(Color::LightYellow)
+            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+    } else {
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
+    }
+}
+
+fn pane_border_style(is_focused: bool, focused_color: Color) -> Style {
+    if is_focused {
+        Style::default()
+            .fg(focused_color)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    }
+}
+
+fn truncate_tail(value: &str, max_chars: usize) -> String {
+    if max_chars == 0 {
+        return String::new();
+    }
+
+    let char_count = value.chars().count();
+    if char_count <= max_chars {
+        return value.to_string();
+    }
+
+    if max_chars == 1 {
+        return "…".to_string();
+    }
+
+    let keep = max_chars - 1;
+    let tail = value
+        .chars()
+        .skip(char_count.saturating_sub(keep))
+        .collect::<String>();
+    format!("…{tail}")
 }

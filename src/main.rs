@@ -50,6 +50,10 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> io::Result<()> {
                     }
                     KeyCode::Char('j') => focus = focus.next_window(),
                     KeyCode::Char('k') => focus = focus.previous_window(),
+                    KeyCode::Char('o') => {
+                        focus = Focus::RightTop;
+                        app.focus_output_name();
+                    }
                     KeyCode::Char('c') => break Ok(()),
                     _ => {}
                 }
@@ -79,8 +83,10 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> io::Result<()> {
                     _ => {}
                 },
                 Focus::RightTop => match key.code {
-                    KeyCode::Tab | KeyCode::Right | KeyCode::Down => app.next_input(),
-                    KeyCode::BackTab | KeyCode::Left | KeyCode::Up => app.previous_input(),
+                    KeyCode::Tab => app.next_input(),
+                    KeyCode::BackTab => app.previous_input(),
+                    KeyCode::Right | KeyCode::Char('l') => app.move_cursor_right(),
+                    KeyCode::Left | KeyCode::Char('h') => app.move_cursor_left(),
                     KeyCode::Enter => app.trim_selected_video(),
                     KeyCode::Backspace => app.backspace_active_input(),
                     KeyCode::Char(ch) => app.push_active_input_char(ch),

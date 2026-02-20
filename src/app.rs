@@ -10,10 +10,10 @@ use std::{
 
 use crate::{
     media::{
-        collect_ffmpeg_lines, default_output_name, is_video_file, probe_video_times,
-        resolve_output_path, shell_quote, summarize_ffmpeg_error,
+        VideoStats, collect_ffmpeg_lines, default_output_name, is_video_file, probe_video_stats,
+        probe_video_times, resolve_output_path, shell_quote, summarize_ffmpeg_error,
     },
-    model::{FileEntry, InputField, TimeInput, TimeSection, VideoBounds},
+    model::{FileEntry, InputField, TimeInput, VideoBounds},
 };
 
 #[derive(Debug)]
@@ -27,6 +27,10 @@ pub struct App {
     pub(crate) end_time: TimeInput,
     pub(crate) output_name: String,
     pub(crate) active_input: InputField,
+    pub(crate) start_cursor: usize,
+    pub(crate) end_cursor: usize,
+    pub(crate) output_cursor: usize,
+    pub(crate) selected_video_stats: Option<VideoStats>,
     selected_video_bounds: Option<VideoBounds>,
     pub(crate) status_message: String,
     pub(crate) ffmpeg_output: Vec<String>,
@@ -48,7 +52,11 @@ impl App {
             start_time: TimeInput::zero(),
             end_time: TimeInput::zero(),
             output_name: String::new(),
-            active_input: InputField::Start(TimeSection::Hours),
+            active_input: InputField::Start,
+            start_cursor: 0,
+            end_cursor: 0,
+            output_cursor: 0,
+            selected_video_stats: None,
             selected_video_bounds: None,
             status_message: "Select a video file in the left pane.".to_string(),
             ffmpeg_output: vec!["ffmpeg output will appear here after trimming.".to_string()],
@@ -131,28 +139,75 @@ impl App {
         self.active_input = self.active_input.previous();
     }
 
+    pub fn focus_output_name(&mut self) {
+        self.active_input = InputField::Output;
+        self.output_cursor = self.output_name.chars().count();
+    }
+
+    pub fn move_cursor_left(&mut self) {
+        match self.active_input {
+            InputField::Start => self.start_cursor = self.start_cursor.saturating_sub(1),
+            InputField::End => self.end_cursor = self.end_cursor.saturating_sub(1),
+            InputField::Output => self.output_cursor = self.output_cursor.saturating_sub(1),
+        }
+    }
+
+    pub fn move_cursor_right(&mut self) {
+        match self.active_input {
+            InputField::Start => self.start_cursor = (self.start_cursor + 1).min(5),
+            InputField::End => self.end_cursor = (self.end_cursor + 1).min(5),
+            InputField::Output => {
+                let max = self.output_name.chars().count();
+                self.output_cursor = (self.output_cursor + 1).min(max);
+            }
+        }
+    }
+
     pub fn push_active_input_char(&mut self, ch: char) {
         match self.active_input {
-            InputField::Start(section) => {
+            InputField::Start => {
                 if ch.is_ascii_digit() {
-                    self.start_time.push_digit(section, ch);
+                    self.start_time.set_digit_at(self.start_cursor, ch);
+                    self.start_cursor = (self.start_cursor + 1).min(5);
                 }
             }
-            InputField::End(section) => {
+            InputField::End => {
                 if ch.is_ascii_digit() {
-                    self.end_time.push_digit(section, ch);
+                    self.end_time.set_digit_at(self.end_cursor, ch);
+                    self.end_cursor = (self.end_cursor + 1).min(5);
                 }
             }
-            InputField::Output => self.output_name.push(ch),
+            InputField::Output => {
+                let byte_index = byte_index_for_char(&self.output_name, self.output_cursor);
+                self.output_name.insert(byte_index, ch);
+                self.output_cursor += 1;
+            }
         }
     }
 
     pub fn backspace_active_input(&mut self) {
         match self.active_input {
-            InputField::Start(section) => self.start_time.backspace(section),
-            InputField::End(section) => self.end_time.backspace(section),
+            InputField::Start => {
+                if self.start_cursor > 0 {
+                    self.start_cursor -= 1;
+                }
+                self.start_time.set_digit_at(self.start_cursor, '0');
+            }
+            InputField::End => {
+                if self.end_cursor > 0 {
+                    self.end_cursor -= 1;
+                }
+                self.end_time.set_digit_at(self.end_cursor, '0');
+            }
             InputField::Output => {
-                self.output_name.pop();
+                if self.output_cursor == 0 {
+                    return;
+                }
+                let remove_char_index = self.output_cursor - 1;
+                let start = byte_index_for_char(&self.output_name, remove_char_index);
+                let end = byte_index_for_char(&self.output_name, remove_char_index + 1);
+                self.output_name.replace_range(start..end, "");
+                self.output_cursor -= 1;
             }
         }
     }
@@ -364,6 +419,7 @@ impl App {
 
     fn select_video(&mut self, path: PathBuf) {
         self.output_name = default_output_name(&path);
+        self.selected_video_stats = probe_video_stats(&path).ok();
 
         match probe_video_times(&path) {
             Ok((start_time, end_time, bounds)) => {
@@ -388,7 +444,10 @@ impl App {
             }
         }
 
-        self.active_input = InputField::Start(TimeSection::Hours);
+        self.active_input = InputField::Start;
+        self.start_cursor = 0;
+        self.end_cursor = 0;
+        self.output_cursor = self.output_name.chars().count();
         self.selected_video = Some(path);
     }
 
@@ -459,4 +518,16 @@ fn read_entries(dir: &Path) -> io::Result<Vec<FileEntry>> {
 
     entries.sort_by_key(|entry| (!entry.is_dir, entry.name.to_ascii_lowercase()));
     Ok(entries)
+}
+
+fn byte_index_for_char(input: &str, char_index: usize) -> usize {
+    if char_index == 0 {
+        return 0;
+    }
+
+    input
+        .char_indices()
+        .nth(char_index)
+        .map(|(index, _)| index)
+        .unwrap_or(input.len())
 }
