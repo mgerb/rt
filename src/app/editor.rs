@@ -20,7 +20,8 @@ impl App {
         }
         if !self.ffmpeg_available() {
             self.status_message =
-                "ffmpeg was not found in PATH. Install ffmpeg to enable editing and export.".to_string();
+                "ffmpeg was not found in PATH. Install ffmpeg to enable editing and export."
+                    .to_string();
             return;
         }
 

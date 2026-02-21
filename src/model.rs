@@ -84,6 +84,12 @@ impl RightTab {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DownloaderStep {
+    UrlInput,
+    QualitySelect,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputField {
     Start,
     End,

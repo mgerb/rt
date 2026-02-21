@@ -2,12 +2,12 @@
 // - Stores file-browser state, editor form inputs, tab/focus state, and output logs.
 // - Owns background ffmpeg job state and process communication handles.
 // - Exposes cross-cutting helpers used by event handling and rendering code.
+mod downloader;
+mod editor;
 mod ffmpeg;
 mod files;
 mod input;
 mod tool_output;
-mod editor;
-mod downloader;
 
 use std::{
     env, fs, io,
@@ -18,7 +18,7 @@ use std::{
 
 use crate::{
     media::{OUTPUT_FORMATS, VideoStats, is_audio_output_format},
-    model::{FileEntry, Focus, InputField, RightTab, TimeInput, VideoBounds},
+    model::{DownloaderStep, FileEntry, Focus, InputField, RightTab, TimeInput, VideoBounds},
 };
 
 use self::files::read_entries;
@@ -55,6 +55,13 @@ pub struct App {
     pub(crate) ffmpeg_output: ToolOutput,
     pub(crate) downloader_url: String,
     pub(crate) downloader_url_cursor: usize,
+    pub(crate) downloader_step: DownloaderStep,
+    pub(crate) downloader_audio_only: bool,
+    pub(crate) downloader_sponsorblock: bool,
+    pub(crate) downloader_subtitles: bool,
+    pub(crate) downloader_option_focus: Option<usize>,
+    downloader_quality_choices: Vec<DownloaderQualityChoice>,
+    downloader_quality_index: usize,
     pub(crate) downloader_output: ToolOutput,
     ffmpeg_available: bool,
     downloader_available: bool,
@@ -66,6 +73,7 @@ pub struct App {
     pending_delete: Option<PendingDelete>,
     pending_cancel: Option<PendingCancel>,
     running_editor: Option<RunningEditor>,
+    running_downloader_probe: Option<RunningDownloaderProbe>,
     running_downloader: Option<RunningDownloader>,
 }
 
@@ -90,6 +98,11 @@ struct RunningEditor {
     stderr_pending: Vec<u8>,
 }
 
+struct RunningDownloaderProbe {
+    rx: Receiver<DownloaderProbeResult>,
+    command_line: String,
+}
+
 struct RunningDownloader {
     child: Child,
     rx: Receiver<DownloaderEvent>,
@@ -98,6 +111,12 @@ struct RunningDownloader {
     stderr_raw: Vec<u8>,
     stdout_pending: Vec<u8>,
     stderr_pending: Vec<u8>,
+}
+
+#[derive(Debug, Clone)]
+struct DownloaderQualityChoice {
+    selector: String,
+    label: String,
 }
 
 #[derive(Clone, Copy)]
@@ -118,8 +137,23 @@ enum DownloaderStream {
 }
 
 enum DownloaderEvent {
-    Chunk { stream: DownloaderStream, data: Vec<u8> },
-    ReaderError { stream: DownloaderStream, error: String },
+    Chunk {
+        stream: DownloaderStream,
+        data: Vec<u8>,
+    },
+    ReaderError {
+        stream: DownloaderStream,
+        error: String,
+    },
+}
+
+enum DownloaderProbeResult {
+    Success {
+        choices: Vec<DownloaderQualityChoice>,
+    },
+    Failed {
+        error: String,
+    },
 }
 
 impl App {
@@ -165,6 +199,16 @@ impl App {
             ffmpeg_output: ToolOutput::empty(),
             downloader_url: String::new(),
             downloader_url_cursor: 0,
+            downloader_step: DownloaderStep::UrlInput,
+            downloader_audio_only: false,
+            downloader_sponsorblock: false,
+            downloader_subtitles: false,
+            downloader_option_focus: None,
+            downloader_quality_choices: vec![DownloaderQualityChoice {
+                selector: "bestvideo+bestaudio/best".to_string(),
+                label: "AUTO    auto best      --     --         auto  video".to_string(),
+            }],
+            downloader_quality_index: 0,
             downloader_output: ToolOutput::empty(),
             ffmpeg_available,
             downloader_available,
@@ -176,6 +220,7 @@ impl App {
             pending_delete: None,
             pending_cancel: None,
             running_editor: None,
+            running_downloader_probe: None,
             running_downloader: None,
         })
     }
@@ -195,8 +240,14 @@ impl App {
             self.try_finish_running_editor();
         }
 
+        if self.running_downloader_probe.is_some() || self.running_downloader.is_some() {
+            self.downloader_spinner_frame =
+                (self.downloader_spinner_frame + 1) % spinner_frames().len();
+        }
+        if self.running_downloader_probe.is_some() {
+            self.try_finish_running_downloader_probe();
+        }
         if self.running_downloader.is_some() {
-            self.downloader_spinner_frame = (self.downloader_spinner_frame + 1) % spinner_frames().len();
             self.pump_running_downloader_events();
             self.try_finish_running_downloader();
         }
@@ -272,7 +323,7 @@ impl App {
         }
 
         if self.right_tab == RightTab::Downloader {
-            return true;
+            return self.downloader_step == DownloaderStep::UrlInput;
         }
         if self.right_tab != RightTab::Editor {
             return false;
