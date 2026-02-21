@@ -1,5 +1,5 @@
-// yt-dlp tab runtime behavior.
-// - Owns the editable URL field for the yt-dlp tab.
+// Downloader tab runtime behavior.
+// - Owns the editable URL field for the downloader tab.
 // - Spawns yt-dlp in the background and streams stdout/stderr incrementally.
 // - Keeps a scrollable in-memory output buffer for the reusable log panel.
 // - Refreshes the file browser after successful downloads so new files appear immediately.
@@ -12,27 +12,27 @@ use std::{
 
 use crate::media::shell_quote;
 
-use super::{App, RunningYtDlp, YtDlpEvent, YtDlpStream};
+use super::{App, RunningDownloader, DownloaderEvent, DownloaderStream};
 
 impl App {
-    pub fn run_yt_dlp_download(&mut self) {
-        if self.running_yt_dlp.is_some() {
-            self.status_message = "yt-dlp is already running. Wait for it to finish.".to_string();
+    pub fn run_downloader_download(&mut self) {
+        if self.running_downloader.is_some() {
+            self.status_message = "Downloader is already running. Wait for it to finish.".to_string();
             return;
         }
-        if !self.yt_dlp_available() {
+        if !self.downloader_available() {
             self.status_message =
-                "yt-dlp was not found in PATH. Install yt-dlp to enable downloads.".to_string();
+                "Downloader requires yt-dlp in PATH. Install it to enable downloads.".to_string();
             return;
         }
 
-        let url = self.yt_dlp_url.trim().to_string();
+        let url = self.downloader_url.trim().to_string();
         if url.is_empty() {
-            self.status_message = "Enter a URL before running yt-dlp.".to_string();
+            self.status_message = "Enter a URL before running Downloader.".to_string();
             return;
         }
 
-        let yt_dlp_args = vec![
+        let downloader_args = vec![
             "--newline".to_string(),
             "-P".to_string(),
             self.cwd.display().to_string(),
@@ -41,78 +41,78 @@ impl App {
 
         let command_line = format!(
             "yt-dlp {}",
-            yt_dlp_args
+            downloader_args
                 .iter()
                 .map(|arg| shell_quote(arg))
                 .collect::<Vec<_>>()
                 .join(" ")
         );
 
-        match self.start_yt_dlp_job(command_line.clone(), yt_dlp_args) {
+        match self.start_downloader_job(command_line.clone(), downloader_args) {
             Ok(()) => {
-                self.status_message = format!("Running yt-dlp -> {}", self.cwd.display());
+                self.status_message = format!("Running Downloader -> {}", self.cwd.display());
             }
             Err(err) => {
-                self.yt_dlp_output.replace_with_command_error(
+                self.downloader_output.replace_with_command_error(
                     &command_line,
-                    &format!("Failed to start yt-dlp: {err}"),
+                    &format!("Failed to start Downloader: {err}"),
                 );
-                self.status_message = format!("Failed to start yt-dlp: {err}");
+                self.status_message = format!("Failed to start Downloader: {err}");
             }
         }
     }
 
-    pub fn move_yt_dlp_cursor_left(&mut self) {
-        self.yt_dlp_url_cursor = self.yt_dlp_url_cursor.saturating_sub(1);
+    pub fn move_downloader_cursor_left(&mut self) {
+        self.downloader_url_cursor = self.downloader_url_cursor.saturating_sub(1);
     }
 
-    pub fn move_yt_dlp_cursor_right(&mut self) {
-        let max = self.yt_dlp_url.chars().count();
-        self.yt_dlp_url_cursor = (self.yt_dlp_url_cursor + 1).min(max);
+    pub fn move_downloader_cursor_right(&mut self) {
+        let max = self.downloader_url.chars().count();
+        self.downloader_url_cursor = (self.downloader_url_cursor + 1).min(max);
     }
 
-    pub fn backspace_yt_dlp_url(&mut self) {
-        if self.yt_dlp_url_cursor == 0 {
+    pub fn backspace_downloader_url(&mut self) {
+        if self.downloader_url_cursor == 0 {
             return;
         }
 
-        let remove_char_index = self.yt_dlp_url_cursor - 1;
-        let start = super::input::byte_index_for_char(&self.yt_dlp_url, remove_char_index);
-        let end = super::input::byte_index_for_char(&self.yt_dlp_url, remove_char_index + 1);
-        self.yt_dlp_url.replace_range(start..end, "");
-        self.yt_dlp_url_cursor -= 1;
+        let remove_char_index = self.downloader_url_cursor - 1;
+        let start = super::input::byte_index_for_char(&self.downloader_url, remove_char_index);
+        let end = super::input::byte_index_for_char(&self.downloader_url, remove_char_index + 1);
+        self.downloader_url.replace_range(start..end, "");
+        self.downloader_url_cursor -= 1;
     }
 
-    pub fn push_yt_dlp_url_char(&mut self, ch: char) {
+    pub fn push_downloader_url_char(&mut self, ch: char) {
         let byte_index =
-            super::input::byte_index_for_char(&self.yt_dlp_url, self.yt_dlp_url_cursor);
-        self.yt_dlp_url.insert(byte_index, ch);
-        self.yt_dlp_url_cursor += 1;
+            super::input::byte_index_for_char(&self.downloader_url, self.downloader_url_cursor);
+        self.downloader_url.insert(byte_index, ch);
+        self.downloader_url_cursor += 1;
     }
 
-    pub fn scroll_yt_dlp_output_down(&mut self) {
-        self.yt_dlp_output.scroll_down();
+    pub fn scroll_downloader_output_down(&mut self) {
+        self.downloader_output.scroll_down();
     }
 
-    pub fn scroll_yt_dlp_output_up(&mut self) {
-        self.yt_dlp_output.scroll_up();
+    pub fn scroll_downloader_output_up(&mut self) {
+        self.downloader_output.scroll_up();
     }
 
-    pub fn page_yt_dlp_output_down(&mut self) {
-        self.yt_dlp_output.page_down();
+    pub fn page_downloader_output_down(&mut self) {
+        self.downloader_output.page_down();
     }
 
-    pub fn page_yt_dlp_output_up(&mut self) {
-        self.yt_dlp_output.page_up();
+    pub fn page_downloader_output_up(&mut self) {
+        self.downloader_output.page_up();
     }
 
-    fn start_yt_dlp_job(
+    fn start_downloader_job(
         &mut self,
         command_line: String,
-        yt_dlp_args: Vec<String>,
+        downloader_args: Vec<String>,
     ) -> io::Result<()> {
         let mut child = Command::new("yt-dlp")
-            .args(&yt_dlp_args)
+            .args(&downloader_args)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -128,13 +128,13 @@ impl App {
             .ok_or_else(|| io::Error::other("failed to capture yt-dlp stderr"))?;
 
         let (tx, rx) = mpsc::channel();
-        spawn_yt_dlp_reader(stdout, YtDlpStream::Stdout, tx.clone());
-        spawn_yt_dlp_reader(stderr, YtDlpStream::Stderr, tx);
+        spawn_downloader_reader(stdout, DownloaderStream::Stdout, tx.clone());
+        spawn_downloader_reader(stderr, DownloaderStream::Stderr, tx);
 
-        self.yt_dlp_spinner_frame = 0;
-        self.yt_dlp_output
+        self.downloader_spinner_frame = 0;
+        self.downloader_output
             .begin_stream(&command_line, "Streaming yt-dlp output...");
-        self.running_yt_dlp = Some(RunningYtDlp {
+        self.running_downloader = Some(RunningDownloader {
             child,
             rx,
             command_line,
@@ -147,19 +147,19 @@ impl App {
         Ok(())
     }
 
-    pub(super) fn pump_running_yt_dlp_events(&mut self) {
+    pub(super) fn pump_running_downloader_events(&mut self) {
         let mut streamed_lines = Vec::new();
 
-        if let Some(running) = self.running_yt_dlp.as_mut() {
+        if let Some(running) = self.running_downloader.as_mut() {
             while let Ok(event) = running.rx.try_recv() {
                 match event {
-                    YtDlpEvent::Chunk { stream, data } => {
+                    DownloaderEvent::Chunk { stream, data } => {
                         let lines = consume_stream_chunk(running, stream, &data);
                         for line in lines {
                             streamed_lines.push((stream, line));
                         }
                     }
-                    YtDlpEvent::ReaderError { stream, error } => {
+                    DownloaderEvent::ReaderError { stream, error } => {
                         streamed_lines.push((stream, format!("reader error: {error}")));
                     }
                 }
@@ -167,13 +167,13 @@ impl App {
         }
 
         for (stream, line) in streamed_lines {
-            self.append_yt_dlp_stream_line(stream, line);
+            self.append_downloader_stream_line(stream, line);
         }
     }
 
-    pub(super) fn try_finish_running_yt_dlp(&mut self) {
+    pub(super) fn try_finish_running_downloader(&mut self) {
         let Some(status_result) = self
-            .running_yt_dlp
+            .running_downloader
             .as_mut()
             .map(|running| running.child.try_wait())
         else {
@@ -181,39 +181,41 @@ impl App {
         };
 
         match status_result {
-            Ok(Some(status)) => self.finish_running_yt_dlp(status),
+            Ok(Some(status)) => self.finish_running_downloader(status),
             Ok(None) => {}
             Err(err) => {
-                self.append_yt_dlp_output_line(format!("stderr: failed to poll yt-dlp: {err}"));
-                self.status_message = format!("Failed to monitor yt-dlp process: {err}");
-                self.running_yt_dlp = None;
+                self.append_downloader_output_line(format!(
+                    "stderr: failed to poll Downloader process: {err}"
+                ));
+                self.status_message = format!("Failed to monitor Downloader process: {err}");
+                self.running_downloader = None;
             }
         }
     }
 
-    fn finish_running_yt_dlp(&mut self, status: ExitStatus) {
-        let Some(mut running) = self.running_yt_dlp.take() else {
+    fn finish_running_downloader(&mut self, status: ExitStatus) {
+        let Some(mut running) = self.running_downloader.take() else {
             return;
         };
 
         while let Ok(event) = running.rx.try_recv() {
             match event {
-                YtDlpEvent::Chunk { stream, data } => {
+                DownloaderEvent::Chunk { stream, data } => {
                     for line in consume_stream_chunk(&mut running, stream, &data) {
-                        self.append_yt_dlp_stream_line(stream, line);
+                        self.append_downloader_stream_line(stream, line);
                     }
                 }
-                YtDlpEvent::ReaderError { stream, error } => {
-                    self.append_yt_dlp_stream_line(stream, format!("reader error: {error}"));
+                DownloaderEvent::ReaderError { stream, error } => {
+                    self.append_downloader_stream_line(stream, format!("reader error: {error}"));
                 }
             }
         }
 
         if let Some(line) = flush_pending_line(&mut running.stderr_pending) {
-            self.append_yt_dlp_stream_line(YtDlpStream::Stderr, line);
+            self.append_downloader_stream_line(DownloaderStream::Stderr, line);
         }
         if let Some(line) = flush_pending_line(&mut running.stdout_pending) {
-            self.append_yt_dlp_stream_line(YtDlpStream::Stdout, line);
+            self.append_downloader_stream_line(DownloaderStream::Stdout, line);
         }
 
         let command_line = running.command_line;
@@ -223,9 +225,9 @@ impl App {
         if status.success() {
             if let Err(err) = self.reload() {
                 self.status_message =
-                    format!("yt-dlp completed, but browser refresh failed: {err}");
+                    format!("Downloader completed, but browser refresh failed: {err}");
             } else {
-                self.status_message = "yt-dlp completed successfully.".to_string();
+                self.status_message = "Downloader completed successfully.".to_string();
             }
         } else {
             let stderr = String::from_utf8_lossy(&stderr_raw);
@@ -235,29 +237,29 @@ impl App {
                 .filter(|line| !line.is_empty())
                 .next_back()
                 .unwrap_or("unknown yt-dlp error");
-            self.status_message = format!("yt-dlp failed: {detail}");
+            self.status_message = format!("Downloader failed: {detail}");
         }
 
-        self.append_yt_dlp_output_line(format!(
-            "yt-dlp finished with exit code: {} ({command_line})",
+        self.append_downloader_output_line(format!(
+            "Downloader finished with exit code: {} ({command_line})",
             status.code().unwrap_or(-1)
         ));
     }
 
-    fn append_yt_dlp_stream_line(&mut self, stream: YtDlpStream, line: String) {
+    fn append_downloader_stream_line(&mut self, stream: DownloaderStream, line: String) {
         let prefix = match stream {
-            YtDlpStream::Stdout => "stdout",
-            YtDlpStream::Stderr => "stderr",
+            DownloaderStream::Stdout => "stdout",
+            DownloaderStream::Stderr => "stderr",
         };
-        self.yt_dlp_output.append_prefixed(prefix, line);
+        self.downloader_output.append_prefixed(prefix, line);
     }
 
-    fn append_yt_dlp_output_line(&mut self, line: String) {
-        self.yt_dlp_output.append_line(line);
+    fn append_downloader_output_line(&mut self, line: String) {
+        self.downloader_output.append_line(line);
     }
 }
 
-fn spawn_yt_dlp_reader<R>(reader: R, stream: YtDlpStream, tx: mpsc::Sender<YtDlpEvent>)
+fn spawn_downloader_reader<R>(reader: R, stream: DownloaderStream, tx: mpsc::Sender<DownloaderEvent>)
 where
     R: Read + Send + 'static,
 {
@@ -270,7 +272,7 @@ where
                 Ok(0) => break,
                 Ok(read) => {
                     if tx
-                        .send(YtDlpEvent::Chunk {
+                        .send(DownloaderEvent::Chunk {
                             stream,
                             data: buf[..read].to_vec(),
                         })
@@ -280,7 +282,7 @@ where
                     }
                 }
                 Err(err) => {
-                    let _ = tx.send(YtDlpEvent::ReaderError {
+                    let _ = tx.send(DownloaderEvent::ReaderError {
                         stream,
                         error: err.to_string(),
                     });
@@ -292,13 +294,13 @@ where
 }
 
 fn consume_stream_chunk(
-    running: &mut RunningYtDlp,
-    stream: YtDlpStream,
+    running: &mut RunningDownloader,
+    stream: DownloaderStream,
     data: &[u8],
 ) -> Vec<String> {
     let (raw, pending) = match stream {
-        YtDlpStream::Stdout => (&mut running.stdout_raw, &mut running.stdout_pending),
-        YtDlpStream::Stderr => (&mut running.stderr_raw, &mut running.stderr_pending),
+        DownloaderStream::Stdout => (&mut running.stdout_raw, &mut running.stdout_pending),
+        DownloaderStream::Stderr => (&mut running.stderr_raw, &mut running.stderr_pending),
     };
 
     raw.extend_from_slice(data);

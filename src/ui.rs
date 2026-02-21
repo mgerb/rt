@@ -32,7 +32,9 @@ pub fn render(frame: &mut Frame, app: &App, focus: Focus) {
 
     match app.right_tab() {
         RightTab::Editor => tabs::editor::render_editor_tab(frame, app, focus, right_content),
-        RightTab::YtDlp => tabs::yt_dlp::render_yt_dlp_tab(frame, app, focus, right_content),
+        RightTab::Downloader => {
+            tabs::downloader::render_downloader_tab(frame, app, focus, right_content)
+        }
     }
 
     render_footer_hint(frame, footer);
@@ -151,15 +153,15 @@ fn render_keybinds_popup(frame: &mut Frame) {
         ),
         keybind_row("Enter", "run editor export"),
         Line::from(""),
-        keybind_section("YT-DLP PANEL"),
+        keybind_section("DOWNLOADER PANEL"),
         keybind_row("Type URL", "edit download URL"),
-        keybind_row("Enter", "run yt-dlp download"),
+        keybind_row("Enter", "run downloader"),
         Line::from(""),
         keybind_section("FFMPEG OUTPUT"),
         keybind_row("j/k or Up/Down", "scroll output"),
         keybind_row("Ctrl+u / Ctrl+d", "page up / page down"),
         Line::from(""),
-        keybind_section("YT-DLP OUTPUT"),
+        keybind_section("DOWNLOADER OUTPUT"),
         keybind_row("j/k or Up/Down", "scroll output"),
         keybind_row("Ctrl+u / Ctrl+d", "page up / page down"),
     ];

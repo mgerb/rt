@@ -7,7 +7,7 @@ mod files;
 mod input;
 mod tool_output;
 mod editor;
-mod yt_dlp;
+mod downloader;
 
 use std::{
     env, fs, io,
@@ -53,19 +53,19 @@ pub struct App {
     selected_video_bounds: Option<VideoBounds>,
     pub(crate) status_message: String,
     pub(crate) ffmpeg_output: ToolOutput,
-    pub(crate) yt_dlp_url: String,
-    pub(crate) yt_dlp_url_cursor: usize,
-    pub(crate) yt_dlp_output: ToolOutput,
+    pub(crate) downloader_url: String,
+    pub(crate) downloader_url_cursor: usize,
+    pub(crate) downloader_output: ToolOutput,
     ffmpeg_available: bool,
-    yt_dlp_available: bool,
+    downloader_available: bool,
     gpu_h264_encoder_available: bool,
     pub(crate) show_keybinds: bool,
     pub(crate) ffmpeg_spinner_frame: usize,
-    pub(crate) yt_dlp_spinner_frame: usize,
+    pub(crate) downloader_spinner_frame: usize,
     pub(crate) right_tab: RightTab,
     pending_delete: Option<PendingDelete>,
     running_editor: Option<RunningEditor>,
-    running_yt_dlp: Option<RunningYtDlp>,
+    running_downloader: Option<RunningDownloader>,
 }
 
 struct PendingDelete {
@@ -84,9 +84,9 @@ struct RunningEditor {
     stderr_pending: Vec<u8>,
 }
 
-struct RunningYtDlp {
+struct RunningDownloader {
     child: Child,
-    rx: Receiver<YtDlpEvent>,
+    rx: Receiver<DownloaderEvent>,
     command_line: String,
     stdout_raw: Vec<u8>,
     stderr_raw: Vec<u8>,
@@ -106,14 +106,14 @@ enum FfmpegEvent {
 }
 
 #[derive(Clone, Copy)]
-enum YtDlpStream {
+enum DownloaderStream {
     Stdout,
     Stderr,
 }
 
-enum YtDlpEvent {
-    Chunk { stream: YtDlpStream, data: Vec<u8> },
-    ReaderError { stream: YtDlpStream, error: String },
+enum DownloaderEvent {
+    Chunk { stream: DownloaderStream, data: Vec<u8> },
+    ReaderError { stream: DownloaderStream, error: String },
 }
 
 impl App {
@@ -121,7 +121,7 @@ impl App {
         let cwd = resolve_start_dir(start_dir)?;
         let entries = read_entries(&cwd)?;
         let ffmpeg_available = detect_ffmpeg_available();
-        let yt_dlp_available = detect_yt_dlp_available();
+        let downloader_available = detect_downloader_available();
         let gpu_h264_encoder_available = if ffmpeg_available {
             detect_ffmpeg_encoder_available("h264_nvenc")
         } else {
@@ -159,21 +159,21 @@ impl App {
             ffmpeg_output: ToolOutput::with_placeholder(
                 "ffmpeg output will appear here after export.",
             ),
-            yt_dlp_url: String::new(),
-            yt_dlp_url_cursor: 0,
-            yt_dlp_output: ToolOutput::with_placeholder(
-                "yt-dlp output will appear here after a download.",
+            downloader_url: String::new(),
+            downloader_url_cursor: 0,
+            downloader_output: ToolOutput::with_placeholder(
+                "Downloader output will appear here after a download.",
             ),
             ffmpeg_available,
-            yt_dlp_available,
+            downloader_available,
             gpu_h264_encoder_available,
             show_keybinds: false,
             ffmpeg_spinner_frame: 0,
-            yt_dlp_spinner_frame: 0,
+            downloader_spinner_frame: 0,
             right_tab: RightTab::Editor,
             pending_delete: None,
             running_editor: None,
-            running_yt_dlp: None,
+            running_downloader: None,
         })
     }
 
@@ -192,10 +192,10 @@ impl App {
             self.try_finish_running_editor();
         }
 
-        if self.running_yt_dlp.is_some() {
-            self.yt_dlp_spinner_frame = (self.yt_dlp_spinner_frame + 1) % spinner_frames().len();
-            self.pump_running_yt_dlp_events();
-            self.try_finish_running_yt_dlp();
+        if self.running_downloader.is_some() {
+            self.downloader_spinner_frame = (self.downloader_spinner_frame + 1) % spinner_frames().len();
+            self.pump_running_downloader_events();
+            self.try_finish_running_downloader();
         }
     }
 
@@ -211,24 +211,24 @@ impl App {
         self.ffmpeg_output.scroll()
     }
 
-    pub fn yt_dlp_is_running(&self) -> bool {
-        self.running_yt_dlp.is_some()
+    pub fn downloader_is_running(&self) -> bool {
+        self.running_downloader.is_some()
     }
 
-    pub fn yt_dlp_spinner_glyph(&self) -> char {
-        spinner_frames()[self.yt_dlp_spinner_frame]
+    pub fn downloader_spinner_glyph(&self) -> char {
+        spinner_frames()[self.downloader_spinner_frame]
     }
 
-    pub fn yt_dlp_available(&self) -> bool {
-        self.yt_dlp_available
+    pub fn downloader_available(&self) -> bool {
+        self.downloader_available
     }
 
-    pub fn yt_dlp_output_lines(&self) -> &[String] {
-        self.yt_dlp_output.lines()
+    pub fn downloader_output_lines(&self) -> &[String] {
+        self.downloader_output.lines()
     }
 
-    pub fn yt_dlp_output_scroll(&self) -> usize {
-        self.yt_dlp_output.scroll()
+    pub fn downloader_output_scroll(&self) -> usize {
+        self.downloader_output.scroll()
     }
 
     pub fn gpu_h264_encoder_available(&self) -> bool {
@@ -276,7 +276,7 @@ impl App {
             return false;
         }
 
-        if self.right_tab == RightTab::YtDlp {
+        if self.right_tab == RightTab::Downloader {
             return true;
         }
         if self.right_tab != RightTab::Editor {
@@ -295,7 +295,7 @@ impl App {
     }
 
     pub fn can_focus_right_bottom(&self) -> bool {
-        matches!(self.right_tab, RightTab::Editor | RightTab::YtDlp)
+        matches!(self.right_tab, RightTab::Editor | RightTab::Downloader)
     }
 
     pub fn normalize_focus(&self, focus: &mut Focus) {
@@ -380,7 +380,7 @@ fn detect_ffmpeg_available() -> bool {
         .unwrap_or(false)
 }
 
-fn detect_yt_dlp_available() -> bool {
+fn detect_downloader_available() -> bool {
     Command::new("yt-dlp")
         .arg("--version")
         .stdout(Stdio::null())

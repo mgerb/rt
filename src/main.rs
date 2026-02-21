@@ -99,12 +99,12 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                         KeyCode::Char('u') if focus == Focus::RightBottom => match app.right_tab()
                         {
                             RightTab::Editor => app.page_ffmpeg_output_up(),
-                            RightTab::YtDlp => app.page_yt_dlp_output_up(),
+                            RightTab::Downloader => app.page_downloader_output_up(),
                         },
                         KeyCode::Char('d') | KeyCode::Char('p') if focus == Focus::RightBottom => {
                             match app.right_tab() {
                                 RightTab::Editor => app.page_ffmpeg_output_down(),
-                                RightTab::YtDlp => app.page_yt_dlp_output_down(),
+                                RightTab::Downloader => app.page_downloader_output_down(),
                             }
                         }
                         KeyCode::Char('c') => break Ok(()),
@@ -159,12 +159,12 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                             KeyCode::Char(ch) => app.push_active_input_char(ch),
                             _ => {}
                         },
-                        RightTab::YtDlp => match key.code {
-                            KeyCode::Enter => app.run_yt_dlp_download(),
-                            KeyCode::Right => app.move_yt_dlp_cursor_right(),
-                            KeyCode::Left => app.move_yt_dlp_cursor_left(),
-                            KeyCode::Backspace => app.backspace_yt_dlp_url(),
-                            KeyCode::Char(ch) => app.push_yt_dlp_url_char(ch),
+                        RightTab::Downloader => match key.code {
+                            KeyCode::Enter => app.run_downloader_download(),
+                            KeyCode::Right => app.move_downloader_cursor_right(),
+                            KeyCode::Left => app.move_downloader_cursor_left(),
+                            KeyCode::Backspace => app.backspace_downloader_url(),
+                            KeyCode::Char(ch) => app.push_downloader_url_char(ch),
                             _ => {}
                         },
                     },
@@ -174,9 +174,9 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                             KeyCode::Up | KeyCode::Char('k') => app.scroll_ffmpeg_output_up(),
                             _ => {}
                         },
-                        RightTab::YtDlp => match key.code {
-                            KeyCode::Down | KeyCode::Char('j') => app.scroll_yt_dlp_output_down(),
-                            KeyCode::Up | KeyCode::Char('k') => app.scroll_yt_dlp_output_up(),
+                        RightTab::Downloader => match key.code {
+                            KeyCode::Down | KeyCode::Char('j') => app.scroll_downloader_output_down(),
+                            KeyCode::Up | KeyCode::Char('k') => app.scroll_downloader_output_up(),
                             _ => {}
                         },
                     },
@@ -193,9 +193,9 @@ fn handle_paste_event(app: &mut App, focus: Focus, text: &str) {
 
     let sanitized = text.chars().filter(|ch| *ch != '\n' && *ch != '\r');
     match app.right_tab() {
-        RightTab::YtDlp => {
+        RightTab::Downloader => {
             for ch in sanitized {
-                app.push_yt_dlp_url_char(ch);
+                app.push_downloader_url_char(ch);
             }
         }
         RightTab::Editor => {
@@ -214,7 +214,7 @@ fn is_text_input_focus(app: &App, focus: Focus) -> bool {
     }
 
     match app.right_tab() {
-        RightTab::YtDlp => true,
+        RightTab::Downloader => true,
         RightTab::Editor => app.active_input == InputField::Output,
     }
 }
