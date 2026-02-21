@@ -1,3 +1,8 @@
+// ffmpeg process runtime management.
+// - Spawns ffmpeg with piped stdout/stderr and streams output incrementally.
+// - Updates in-memory output lines used by the log panel in real time.
+// - Finalizes run status, refreshes file list after successful outputs,
+//   and appends a full per-run transcript to ffmpeg_runs.log.
 use std::{
     fs::OpenOptions,
     io::{self, BufReader, Read, Write},

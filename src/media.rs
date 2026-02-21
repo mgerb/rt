@@ -1,3 +1,7 @@
+// Media and path helper functions.
+// - Uses ffprobe to gather timing bounds and display stats for selected videos.
+// - Parses/normalizes probed values (fps, bitrate, duration, size).
+// - Handles output filename/extension rules and numbered collision resolution.
 use std::{
     collections::HashMap,
     io,

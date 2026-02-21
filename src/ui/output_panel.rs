@@ -1,3 +1,6 @@
+// Reusable scrollable text-output panel.
+// - Renders title, content lines, and scroll offset in a consistent style.
+// - Applies focus-aware border styling so any tab can reuse it for logs/output.
 use ratatui::{
     Frame,
     layout::{Alignment, Rect},

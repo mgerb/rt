@@ -1,3 +1,8 @@
+// File-browser behavior for the left pane.
+// - Reads/sorts directory entries and manages selection movement.
+// - Handles directory navigation and entry activation.
+// - Starts delete confirmation flow and removes files after confirmation.
+// - Populates trim defaults when a video file is selected.
 use std::{
     fs, io,
     path::{Path, PathBuf},
