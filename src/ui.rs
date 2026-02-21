@@ -35,6 +35,9 @@ pub fn render(frame: &mut Frame, app: &App, focus: Focus) {
     if app.show_keybinds {
         render_keybinds_popup(frame);
     }
+    if app.has_pending_delete() {
+        render_delete_confirm_modal(frame, app);
+    }
 }
 
 fn render_right_tabs(frame: &mut Frame, app: &App, focus: Focus, area: ratatui::layout::Rect) {
@@ -129,14 +132,14 @@ fn render_keybinds_popup(frame: &mut Frame) {
         keybind_row("Ctrl+h", "focus left browser"),
         keybind_row("Ctrl+l", "focus right column"),
         keybind_row("Ctrl+j / Ctrl+k", "move window focus"),
-        keybind_row("Ctrl+n / Ctrl+p", "next / previous right tab"),
-        keybind_row("1 / 2", "open right tab"),
+        keybind_row("Shift+H / Shift+L", "previous / next right tab"),
         Line::from(""),
         keybind_section("LEFT BROWSER"),
         keybind_row("j/k or Up/Down", "move selection"),
-        keybind_row("Enter or Right", "open dir or select video"),
-        keybind_row("Left/Backspace/-", "parent directory"),
+        keybind_row("Enter", "open dir or select video"),
+        keybind_row("h/-", "parent directory"),
         keybind_row("_", "initial directory"),
+        keybind_row("d", "delete selected file (confirm modal)"),
         keybind_row("r", "refresh listing"),
         Line::from(""),
         keybind_section("TRIM PANEL"),
@@ -156,6 +159,51 @@ fn render_keybinds_popup(frame: &mut Frame) {
         .block(Block::default().borders(Borders::ALL).title("Keybinds"))
         .wrap(Wrap { trim: true })
         .alignment(Alignment::Left);
+
+    frame.render_widget(popup_widget, popup);
+}
+
+fn render_delete_confirm_modal(frame: &mut Frame, app: &App) {
+    let Some((name, path)) = app.pending_delete_target() else {
+        return;
+    };
+
+    let outer = frame.area();
+    let [vertical] = Layout::vertical([Constraint::Percentage(42)])
+        .flex(ratatui::layout::Flex::Center)
+        .areas(outer);
+    let [popup] = Layout::horizontal([Constraint::Percentage(68)])
+        .flex(ratatui::layout::Flex::Center)
+        .areas(vertical);
+
+    frame.render_widget(Clear, popup);
+
+    let lines = vec![
+        Line::styled(
+            "Delete this file?",
+            Style::default()
+                .fg(Color::LightRed)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Line::from(""),
+        Line::from(format!("Name: {name}")),
+        Line::from(format!("Path: {}", path.display())),
+        Line::from(""),
+        Line::from("This cannot be undone."),
+        Line::from(""),
+        Line::from("Press y or Enter to confirm."),
+        Line::from("Press n or Esc to cancel."),
+    ];
+
+    let popup_widget = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Confirm Delete")
+                .border_style(pane_border_style(true, Color::LightRed)),
+        )
+        .alignment(Alignment::Left)
+        .wrap(Wrap { trim: true });
 
     frame.render_widget(popup_widget, popup);
 }

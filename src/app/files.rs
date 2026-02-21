@@ -11,7 +11,7 @@ use crate::{
     model::{FileEntry, InputField, TimeInput},
 };
 
-use super::{App, trim::default_output_fps};
+use super::{App, PendingDelete, trim::default_output_fps};
 
 impl App {
     pub fn next(&mut self) {
@@ -59,6 +59,50 @@ impl App {
 
         self.status_message = format!("Not a video file: {}", entry.name);
         Ok(false)
+    }
+
+    pub fn request_delete_selected_entry(&mut self) {
+        let Some(entry) = self.selected_entry().cloned() else {
+            self.status_message = "No entry selected.".to_string();
+            return;
+        };
+
+        if entry.is_dir {
+            self.status_message = "Delete is only supported for files.".to_string();
+            return;
+        }
+
+        self.pending_delete = Some(PendingDelete {
+            name: entry.name,
+            path: entry.path,
+        });
+    }
+
+    pub fn cancel_pending_delete(&mut self) {
+        self.pending_delete = None;
+    }
+
+    pub fn confirm_pending_delete(&mut self) {
+        let Some(pending) = self.pending_delete.take() else {
+            return;
+        };
+
+        match fs::remove_file(&pending.path) {
+            Ok(()) => {
+                self.clear_selected_video_if_matches(&pending.path);
+                if let Err(err) = self.reload() {
+                    self.status_message = format!(
+                        "Deleted {}, but failed to refresh browser: {err}",
+                        pending.name
+                    );
+                    return;
+                }
+                self.status_message = format!("Deleted file: {}", pending.name);
+            }
+            Err(err) => {
+                self.status_message = format!("Failed to delete {}: {err}", pending.name);
+            }
+        }
     }
 
     pub fn go_parent_dir(&mut self) -> io::Result<()> {
@@ -159,6 +203,22 @@ impl App {
 
     fn selected_entry(&self) -> Option<&FileEntry> {
         self.entries.get(self.selected)
+    }
+
+    fn clear_selected_video_if_matches(&mut self, deleted_path: &Path) {
+        if self
+            .selected_video
+            .as_ref()
+            .is_some_and(|path| path == deleted_path)
+        {
+            self.selected_video = None;
+            self.selected_video_stats = None;
+            self.selected_video_bounds = None;
+            self.start_time = TimeInput::zero();
+            self.end_time = TimeInput::zero();
+            self.output_name.clear();
+            self.output_cursor = 0;
+        }
     }
 }
 
