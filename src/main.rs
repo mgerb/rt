@@ -28,6 +28,18 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> io::Result<()> {
             && let Event::Key(key) = event::read()?
             && key.kind == KeyEventKind::Press
         {
+            if key.code == KeyCode::Char('?') {
+                app.toggle_keybinds();
+                continue;
+            }
+
+            if app.show_keybinds {
+                if key.code == KeyCode::Esc {
+                    app.hide_keybinds();
+                }
+                continue;
+            }
+
             if key.modifiers.contains(KeyModifiers::CONTROL) {
                 match key.code {
                     KeyCode::Char('h') => focus = Focus::Left,

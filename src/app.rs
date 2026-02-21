@@ -31,6 +31,7 @@ pub struct App {
     pub(crate) status_message: String,
     pub(crate) ffmpeg_output: Vec<String>,
     pub(crate) ffmpeg_scroll: usize,
+    pub(crate) show_keybinds: bool,
 }
 
 impl App {
@@ -52,7 +53,16 @@ impl App {
             status_message: "Select a video file in the left pane.".to_string(),
             ffmpeg_output: vec!["ffmpeg output will appear here after trimming.".to_string()],
             ffmpeg_scroll: 0,
+            show_keybinds: false,
         })
+    }
+
+    pub fn toggle_keybinds(&mut self) {
+        self.show_keybinds = !self.show_keybinds;
+    }
+
+    pub fn hide_keybinds(&mut self) {
+        self.show_keybinds = false;
     }
 
     pub fn next(&mut self) {
