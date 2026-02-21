@@ -1,0 +1,108 @@
+=== ffmpeg run @ 1771619182 ===
+command: ffmpeg -y -hide_banner -ss 00:10:00 -i /home/mg/git/rust/rt/replay_1771480260915626295.mp4 -t 1200 -map 0:v:0? -map 0:a:0? -sn -dn -fflags +genpts -avoid_negative_ts make_zero -c:v mpeg4 -q:v 2 -c:a aac -b:a 192k -movflags +faststart /home/mg/git/rust/rt/replay_1771480260915626295_copy.mp4
+exit_code: 234
+--- stderr ---
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/home/mg/git/rust/rt/replay_1771480260915626295.mp4':
+  Metadata:
+    major_brand     : isom
+    minor_version   : 512
+    compatible_brands: isomiso2avc1mp41
+    encoder         : Lavf62.3.100
+  Duration: 00:01:00.90, start: 0.000000, bitrate: 20101 kb/s
+  Stream #0:0[0x1](und): Video: h264 (Main) (avc1 / 0x31637661), yuv420p(tv, bt709, progressive), 3440x1440, 19803 kb/s, 59.74 fps, 120 tbr, 90k tbn (default)
+    Metadata:
+      handler_name    : VideoHandler
+      vendor_id       : [0][0][0][0]
+  Stream #0:1[0x2](und): Audio: aac (LC) (mp4a / 0x6134706D), 48000 Hz, stereo, fltp, 288 kb/s (default)
+    Metadata:
+      handler_name    : SoundHandler
+      vendor_id       : [0][0][0][0]
+Stream mapping:
+  Stream #0:0 -> #0:0 (h264 (native) -> mpeg4 (native))
+  Stream #0:1 -> #0:1 (aac (native) -> aac (native))
+Press [q] to stop, [?] for help
+[af#0:1 @ 0x55e2dad88980] No filtered frames for output stream, trying to initialize anyway.
+[vf#0:0 @ 0x55e2d9f2bf40] No filtered frames for output stream, trying to initialize anyway.
+[mpeg4 @ 0x55e2d9f2b680] timebase 1/90000 not supported by MPEG 4 standard, the maximum admitted value for the timebase denominator is 65535
+[vost#0:0/mpeg4 @ 0x55e2d9f67fc0] [enc:mpeg4 @ 0x55e2d9f590c0] Error while opening encoder - maybe incorrect parameters such as bit_rate, rate, width or height.
+[vf#0:0 @ 0x55e2d9f5c0c0] Error sending frames to consumers: Invalid argument
+[vf#0:0 @ 0x55e2d9f5c0c0] Task finished with error code: -22 (Invalid argument)
+[vf#0:0 @ 0x55e2d9f5c0c0] Terminating thread with return code -22 (Invalid argument)
+[vost#0:0/mpeg4 @ 0x55e2d9f67fc0] [enc:mpeg4 @ 0x55e2d9f590c0] Could not open encoder before EOF
+[vost#0:0/mpeg4 @ 0x55e2d9f67fc0] Task finished with error code: -22 (Invalid argument)
+[vost#0:0/mpeg4 @ 0x55e2d9f67fc0] Terminating thread with return code -22 (Invalid argument)
+[out#0/mp4 @ 0x55e2d9f6bd00] Nothing was written into output file, because at least one of its streams received no packets.
+frame=    0 fps=0.0 q=0.0 Lsize=       0KiB time=N/A bitrate=N/A speed=N/A elapsed=0:00:00.05    
+[aac @ 0x55e2dacfce00] Qavg: nan
+Conversion failed!
+--- stdout ---
+
+=== end ===
+
+=== ffmpeg run @ 1771619349 ===
+command: ffmpeg -y -hide_banner -ss 00:00:10 -i /home/mg/git/rust/rt/replay_1771480260915626295.mp4 -t 20 -map 0:v:0? -map 0:a:0? -sn -dn -fflags +genpts -avoid_negative_ts make_zero -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart /home/mg/git/rust/rt/replay_1771480260915626295_copy.mp4
+exit_code: 0
+--- stderr ---
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/home/mg/git/rust/rt/replay_1771480260915626295.mp4':
+  Metadata:
+    major_brand     : isom
+    minor_version   : 512
+    compatible_brands: isomiso2avc1mp41
+    encoder         : Lavf62.3.100
+  Duration: 00:01:00.90, start: 0.000000, bitrate: 20101 kb/s
+  Stream #0:0[0x1](und): Video: h264 (Main) (avc1 / 0x31637661), yuv420p(tv, bt709, progressive), 3440x1440, 19803 kb/s, 59.74 fps, 120 tbr, 90k tbn (default)
+    Metadata:
+      handler_name    : VideoHandler
+      vendor_id       : [0][0][0][0]
+  Stream #0:1[0x2](und): Audio: aac (LC) (mp4a / 0x6134706D), 48000 Hz, stereo, fltp, 288 kb/s (default)
+    Metadata:
+      handler_name    : SoundHandler
+      vendor_id       : [0][0][0][0]
+Stream mapping:
+  Stream #0:0 -> #0:0 (h264 (native) -> h264 (libx264))
+  Stream #0:1 -> #0:1 (aac (native) -> aac (native))
+Press [q] to stop, [?] for help
+[libx264 @ 0x556c2357b600] using cpu capabilities: MMX2 SSE2Fast SSSE3 SSE4.2 AVX FMA3 BMI2 AVX2
+[libx264 @ 0x556c2357b600] profile High, level 5.2, 4:2:0, 8-bit
+[libx264 @ 0x556c2357b600] 264 - core 164 - H.264/MPEG-4 AVC codec - Copyleft 2003-2025 - http://www.videolan.org/x264.html - options: cabac=1 ref=1 deblock=1:0:0 analyse=0x3:0x113 me=hex subme=2 psy=1 psy_rd=1.00:0.00 mixed_ref=0 me_range=16 chroma_me=1 trellis=0 8x8dct=1 cqm=0 deadzone=21,11 fast_pskip=1 chroma_qp_offset=0 threads=30 lookahead_threads=10 sliced_threads=0 nr=0 decimate=1 interlaced=0 bluray_compat=0 constrained_intra=0 bframes=3 b_pyramid=2 b_adapt=1 b_bias=0 direct=1 weightb=1 open_gop=0 weightp=1 keyint=250 keyint_min=25 scenecut=40 intra_refresh=0 rc_lookahead=10 rc=crf mbtree=1 crf=20.0 qcomp=0.60 qpmin=0 qpmax=69 qpstep=4 ip_ratio=1.40 aq=1:1.00
+Output #0, mp4, to '/home/mg/git/rust/rt/replay_1771480260915626295_copy.mp4':
+  Metadata:
+    major_brand     : isom
+    minor_version   : 512
+    compatible_brands: isomiso2avc1mp41
+    encoder         : Lavf62.3.100
+  Stream #0:0(und): Video: h264 (avc1 / 0x31637661), yuv420p(tv, bt709, progressive), 3440x1440, q=2-31, 60 fps, 15360 tbn (default)
+    Metadata:
+      encoder         : Lavc62.11.100 libx264
+      handler_name    : VideoHandler
+      vendor_id       : [0][0][0][0]
+    Side data:
+      cpb: bitrate max/min/avg: 0/0/0 buffer size: 0 vbv_delay: N/A
+  Stream #0:1(und): Audio: aac (LC) (mp4a / 0x6134706D), 48000 Hz, stereo, fltp, 192 kb/s (default)
+    Metadata:
+      encoder         : Lavc62.11.100 aac
+      handler_name    : SoundHandler
+      vendor_id       : [0][0][0][0]
+frame=   18 fps=0.0 q=28.0 size=    1024KiB time=00:00:00.28 bitrate=29608.2kbits/s speed=0.566x elapsed=0:00:00.50    frame=   83 fps= 83 q=28.0 size=    6144KiB time=00:00:01.36 bitrate=36828.3kbits/s speed=1.37x elapsed=0:00:01.00    frame=  156 fps=104 q=28.0 size=   11008KiB time=00:00:02.58 bitrate=34907.6kbits/s speed=1.72x elapsed=0:00:01.50    frame=  230 fps=115 q=28.0 size=   15616KiB time=00:00:03.83 bitrate=33372.2kbits/s speed=1.92x elapsed=0:00:02.00    frame=  303 fps=121 q=28.0 size=   20736KiB time=00:00:05.05 bitrate=33637.6kbits/s speed=2.02x elapsed=0:00:02.50    frame=  379 fps=126 q=28.0 size=   25856KiB time=00:00:06.33 bitrate=33444.1kbits/s speed=2.11x elapsed=0:00:03.00    frame=  453 fps=129 q=28.0 size=   30976KiB time=00:00:07.56 bitrate=33536.0kbits/s speed=2.16x elapsed=0:00:03.50    frame=  522 fps=130 q=28.0 size=   36608KiB time=00:00:08.73 bitrate=34338.9kbits/s speed=2.18x elapsed=0:00:04.00    frame=  585 fps=130 q=28.0 size=   41216KiB time=00:00:09.78 bitrate=34511.9kbits/s speed=2.17x elapsed=0:00:04.50    frame=  656 fps=131 q=28.0 size=   46336KiB time=00:00:10.96 bitrate=34612.6kbits/s speed=2.19x elapsed=0:00:05.00    frame=  732 fps=133 q=28.0 size=   50688KiB time=00:00:12.23 bitrate=33943.0kbits/s speed=2.22x elapsed=0:00:05.50    frame=  811 fps=135 q=28.0 size=   54784KiB time=00:00:13.55 bitrate=33121.1kbits/s speed=2.26x elapsed=0:00:06.00    frame=  881 fps=135 q=28.0 size=   59136KiB time=00:00:14.73 bitrate=32880.7kbits/s speed=2.27x elapsed=0:00:06.50    frame=  952 fps=136 q=28.0 size=   63488KiB time=00:00:15.91 bitrate=32676.1kbits/s speed=2.27x elapsed=0:00:07.00    frame= 1023 fps=136 q=28.0 size=   68352KiB time=00:00:17.11 bitrate=32713.1kbits/s speed=2.28x elapsed=0:00:07.50    frame= 1103 fps=138 q=28.0 size=   72192KiB time=00:00:18.45 bitrate=32054.1kbits/s speed=2.31x elapsed=0:00:08.00    [mp4 @ 0x556c23569600] Starting second pass: moving the moov atom to the beginning of the file
+[out#0/mp4 @ 0x556c23572a40] video:77691KiB audio:476KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: 0.038546%
+frame= 1194 fps=140 q=-1.0 Lsize=   78198KiB time=00:00:19.95 bitrate=32110.1kbits/s speed=2.34x elapsed=0:00:08.52    
+[libx264 @ 0x556c2357b600] frame I:5     Avg QP:20.70  size:419256
+[libx264 @ 0x556c2357b600] frame P:585   Avg QP:23.88  size: 94597
+[libx264 @ 0x556c2357b600] frame B:604   Avg QP:27.13  size: 36623
+[libx264 @ 0x556c2357b600] consecutive B-frames: 28.9%  5.9% 15.3% 49.9%
+[libx264 @ 0x556c2357b600] mb I  I16..4: 21.7% 36.5% 41.8%
+[libx264 @ 0x556c2357b600] mb P  I16..4:  7.4% 14.0%  3.7%  P16..4: 20.4%  7.6%  3.4%  0.0%  0.0%    skip:43.6%
+[libx264 @ 0x556c2357b600] mb B  I16..4:  1.6%  2.5%  0.5%  B16..8: 20.3%  6.3%  1.1%  direct: 3.5%  skip:64.2%  L0:55.8% L1:35.6% BI: 8.6%
+[libx264 @ 0x556c2357b600] 8x8 transform intra:54.9% inter:19.3%
+[libx264 @ 0x556c2357b600] coded y,uvDC,uvAC intra: 52.2% 55.5% 23.1% inter: 7.9% 13.0% 2.8%
+[libx264 @ 0x556c2357b600] i16 v,h,dc,p: 35% 31% 24% 10%
+[libx264 @ 0x556c2357b600] i8 v,h,dc,ddl,ddr,vr,hd,vl,hu: 22% 32% 15%  4%  4%  4%  6%  4%  7%
+[libx264 @ 0x556c2357b600] i4 v,h,dc,ddl,ddr,vr,hd,vl,hu: 20% 31% 14%  5%  6%  5%  8%  4%  6%
+[libx264 @ 0x556c2357b600] i8c dc,h,v,p: 51% 24% 15% 10%
+[libx264 @ 0x556c2357b600] Weighted P-Frames: Y:0.0% UV:0.0%
+[libx264 @ 0x556c2357b600] kb/s:31848.68
+[aac @ 0x556c2434a5c0] Qavg: 704.574
+--- stdout ---
+
+=== end ===
+
