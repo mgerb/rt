@@ -11,7 +11,14 @@ use std::{
 
 use crate::model::{TimeInput, VideoBounds};
 
-pub const OUTPUT_FORMATS: [&str; 4] = ["mp4", "mov", "mkv", "gif"];
+pub const OUTPUT_FORMATS: [&str; 8] = ["mp4", "mov", "mkv", "gif", "mp3", "m4a", "wav", "flac"];
+
+pub fn is_audio_output_format(format: &str) -> bool {
+    matches!(
+        normalize_output_format(format),
+        "mp3" | "m4a" | "wav" | "flac"
+    )
+}
 
 #[derive(Debug, Clone)]
 pub struct VideoStats {

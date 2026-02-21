@@ -37,8 +37,6 @@ pub fn render_trim_tab(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
 
 fn render_trim_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
     let mut lines = Vec::new();
-    lines.push(trim_section("CLIP SETUP"));
-    lines.push(Line::from(""));
     if !app.ffmpeg_available() {
         lines.push(ffmpeg_warning_line(
             "WARNING: ffmpeg not found in PATH. Trimming is disabled.",
@@ -97,8 +95,7 @@ fn render_trim_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
         lines.push(Line::from(""));
         lines.push(trim_section("TIME RANGE"));
         lines.push(Line::from(""));
-        lines.push(input_hint_line("Format", "HH:MM:SS"));
-        lines.push(Line::from(""));
+        lines.push(input_hint_line("", "HH:MM:SS"));
         lines.push(time_input_line(
             "Start time",
             &app.start_time,
@@ -113,28 +110,34 @@ fn render_trim_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
             app.output_format,
             format_active,
         ));
-        lines.push(input_line("FPS", &app.output_fps, fps_active_cursor));
-        if app.bitrate_enabled() {
-            lines.push(input_line(
-                "Bitrate",
-                &app.output_bitrate_kbps,
-                bitrate_active_cursor,
+        if app.video_options_enabled() {
+            lines.push(input_line("FPS", &app.output_fps, fps_active_cursor));
+            if app.bitrate_enabled() {
+                lines.push(input_line(
+                    "Bitrate",
+                    &app.output_bitrate_kbps,
+                    bitrate_active_cursor,
+                ));
+            } else {
+                lines.push(disabled_input_line("Bitrate", "n/a for GIF"));
+            }
+            lines.push(input_line_with_suffix(
+                "Scale %",
+                &app.output_scale_percent,
+                scale_percent_active_cursor,
+                &preview_scaled_resolution(app),
+            ));
+            lines.push(checkbox_input_line(
+                "Remove audio",
+                app.remove_audio,
+                remove_audio_active,
             ));
         } else {
-            lines.push(disabled_input_line("Bitrate", "n/a for GIF"));
+            lines.push(disabled_input_line("FPS", "n/a for audio-only"));
+            lines.push(disabled_input_line("Bitrate", "n/a for audio-only"));
+            lines.push(disabled_input_line("Scale %", "n/a for audio-only"));
+            lines.push(disabled_input_line("Remove audio", "n/a for audio-only"));
         }
-        lines.push(input_hint_line("Scale %", "100 keeps original"));
-        lines.push(input_line(
-            "Scale %",
-            &app.output_scale_percent,
-            scale_percent_active_cursor,
-        ));
-        lines.push(trim_row("Scaled", preview_scaled_resolution(app)));
-        lines.push(checkbox_input_line(
-            "Remove audio",
-            app.remove_audio,
-            remove_audio_active,
-        ));
         lines.push(input_line("Output", &app.output_name, output_active_cursor));
         lines.push(Line::from(""));
     } else {
@@ -160,29 +163,21 @@ fn render_trim_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
                 .title("Trim"),
         )
         .alignment(Alignment::Left)
-        .wrap(Wrap { trim: true });
+        .wrap(Wrap { trim: false });
 
     frame.render_widget(details, area);
 }
 
 fn render_ffmpeg_output_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
-    let title = if app.ffmpeg_is_running() {
-        format!(
-            "ffmpeg output {} running (scroll: {})",
-            app.ffmpeg_spinner_glyph(),
-            app.ffmpeg_scroll
-        )
-    } else {
-        format!("ffmpeg output (scroll: {})", app.ffmpeg_scroll)
-    };
+    let title = "TOOL OUTPUT";
 
     render_log_panel(
         frame,
         area,
         LogPanelStateView {
-            title: &title,
-            lines: &app.ffmpeg_output,
-            scroll: app.ffmpeg_scroll,
+            title,
+            lines: app.ffmpeg_output_lines(),
+            scroll: app.ffmpeg_output_scroll(),
             focused: focus == Focus::RightBottom,
             accent_color: Color::LightMagenta,
             trim_wrapped_lines: false,
@@ -262,6 +257,23 @@ fn input_line(label: &str, value: &str, active_cursor: Option<usize>) -> Line<'s
     }
 
     Line::from(spans)
+}
+
+fn input_line_with_suffix(
+    label: &str,
+    value: &str,
+    active_cursor: Option<usize>,
+    suffix: &str,
+) -> Line<'static> {
+    let mut line = input_line(label, value, active_cursor);
+    if !suffix.is_empty() {
+        line.spans.push(Span::raw("  "));
+        line.spans.push(Span::styled(
+            suffix.to_string(),
+            Style::default().fg(Color::DarkGray),
+        ));
+    }
+    line
 }
 
 fn input_hint_line(label: &str, value: &str) -> Line<'static> {

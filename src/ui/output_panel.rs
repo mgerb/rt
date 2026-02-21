@@ -25,6 +25,9 @@ pub fn render_log_panel(frame: &mut Frame, area: Rect, panel: LogPanelStateView<
         .map(String::as_str)
         .map(Line::from)
         .collect::<Vec<_>>();
+    let visible_line_count = area.height.saturating_sub(2).max(1) as usize;
+    let max_scroll_top = lines.len().saturating_sub(visible_line_count);
+    let scroll_top = panel.scroll.min(max_scroll_top);
 
     let widget = Paragraph::new(lines)
         .block(
@@ -37,7 +40,7 @@ pub fn render_log_panel(frame: &mut Frame, area: Rect, panel: LogPanelStateView<
         .wrap(Wrap {
             trim: panel.trim_wrapped_lines,
         })
-        .scroll((panel.scroll.min(u16::MAX as usize) as u16, 0));
+        .scroll((scroll_top.min(u16::MAX as usize) as u16, 0));
 
     frame.render_widget(widget, area);
 }

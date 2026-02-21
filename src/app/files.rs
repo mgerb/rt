@@ -144,14 +144,19 @@ impl App {
     }
 
     pub fn scroll_ffmpeg_output_down(&mut self) {
-        let max_scroll = self.ffmpeg_output.len().saturating_sub(1);
-        if self.ffmpeg_scroll < max_scroll {
-            self.ffmpeg_scroll += 1;
-        }
+        self.ffmpeg_output.scroll_down();
     }
 
     pub fn scroll_ffmpeg_output_up(&mut self) {
-        self.ffmpeg_scroll = self.ffmpeg_scroll.saturating_sub(1);
+        self.ffmpeg_output.scroll_up();
+    }
+
+    pub fn page_ffmpeg_output_down(&mut self) {
+        self.ffmpeg_output.page_down();
+    }
+
+    pub fn page_ffmpeg_output_up(&mut self) {
+        self.ffmpeg_output.page_up();
     }
 
     fn change_dir(&mut self, new_cwd: PathBuf) -> io::Result<()> {
@@ -252,6 +257,7 @@ impl App {
             self.start_time = TimeInput::zero();
             self.end_time = TimeInput::zero();
             self.output_name.clear();
+            self.remove_audio = false;
             self.output_scale_percent = "100".to_string();
             self.output_scale_percent_cursor = self.output_scale_percent.chars().count();
             self.output_cursor = 0;

@@ -32,7 +32,7 @@ pub fn render(frame: &mut Frame, app: &App, focus: Focus) {
 
     match app.right_tab() {
         RightTab::Trim => tabs::trim::render_trim_tab(frame, app, focus, right_content),
-        RightTab::Hello => tabs::hello::render_hello_tab(frame, focus, right_content),
+        RightTab::YtDlp => tabs::yt_dlp::render_yt_dlp_tab(frame, app, focus, right_content),
     }
 
     render_footer_hint(frame, footer);
@@ -67,7 +67,7 @@ fn render_right_tabs(frame: &mut Frame, app: &App, focus: Focus, area: ratatui::
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title("Right Tabs")
+                .title("Tabs")
                 .border_style(pane_border_style(focus != Focus::Left, Color::Cyan)),
         );
 
@@ -133,7 +133,7 @@ fn render_keybinds_popup(frame: &mut Frame) {
         keybind_row("Ctrl+j / Ctrl+k", "move window focus"),
         keybind_row("Shift+H / Shift+L", "previous / next right tab"),
         Line::from(""),
-        keybind_section("LEFT BROWSER"),
+        keybind_section("FILE BROWSER"),
         keybind_row("j/k or Up/Down", "move selection"),
         keybind_row("Enter", "open dir or select video"),
         keybind_row("h/-", "parent directory"),
@@ -144,15 +144,24 @@ fn render_keybinds_popup(frame: &mut Frame) {
         Line::from(""),
         keybind_section("TRIM PANEL"),
         keybind_row("Tab / Shift+Tab", "move through time pieces and fields"),
-        keybind_row("Space", "toggle remove-audio checkbox"),
+        keybind_row("Space", "toggle focused checkbox"),
         keybind_row(
             "Backspace",
             "clear time piece / delete FPS/bitrate/scale/output char",
         ),
         keybind_row("Enter", "run ffmpeg trim"),
         Line::from(""),
+        keybind_section("YT-DLP PANEL"),
+        keybind_row("Type URL", "edit download URL"),
+        keybind_row("Enter", "run yt-dlp download"),
+        Line::from(""),
         keybind_section("FFMPEG OUTPUT"),
         keybind_row("j/k or Up/Down", "scroll output"),
+        keybind_row("Ctrl+u / Ctrl+d", "page up / page down"),
+        Line::from(""),
+        keybind_section("YT-DLP OUTPUT"),
+        keybind_row("j/k or Up/Down", "scroll output"),
+        keybind_row("Ctrl+u / Ctrl+d", "page up / page down"),
     ];
 
     let popup_widget = Paragraph::new(lines)
