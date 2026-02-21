@@ -33,6 +33,52 @@ impl Focus {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RightTab {
+    Trim,
+    Hello,
+}
+
+impl RightTab {
+    pub const ALL: [Self; 2] = [Self::Trim, Self::Hello];
+
+    pub fn next(self) -> Self {
+        match self {
+            Self::Trim => Self::Hello,
+            Self::Hello => Self::Trim,
+        }
+    }
+
+    pub fn previous(self) -> Self {
+        match self {
+            Self::Trim => Self::Hello,
+            Self::Hello => Self::Trim,
+        }
+    }
+
+    pub fn number(self) -> usize {
+        match self {
+            Self::Trim => 1,
+            Self::Hello => 2,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Trim => "Trim",
+            Self::Hello => "Hello",
+        }
+    }
+
+    pub fn from_number(number: usize) -> Option<Self> {
+        match number {
+            1 => Some(Self::Trim),
+            2 => Some(Self::Hello),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputField {
     Start,
     End,

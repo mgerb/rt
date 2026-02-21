@@ -3,11 +3,11 @@ mod files;
 mod input;
 mod trim;
 
-use std::{env, io, path::PathBuf, process::Child, sync::mpsc::Receiver};
+use std::{env, fs, io, path::PathBuf, process::Child, sync::mpsc::Receiver};
 
 use crate::{
     media::{OUTPUT_FORMATS, VideoStats},
-    model::{FileEntry, InputField, TimeInput, VideoBounds},
+    model::{FileEntry, Focus, InputField, RightTab, TimeInput, VideoBounds},
 };
 
 use self::files::read_entries;
@@ -38,6 +38,7 @@ pub struct App {
     pub(crate) ffmpeg_scroll: usize,
     pub(crate) show_keybinds: bool,
     pub(crate) ffmpeg_spinner_frame: usize,
+    pub(crate) right_tab: RightTab,
     running_trim: Option<RunningTrim>,
 }
 
@@ -64,8 +65,8 @@ enum FfmpegEvent {
 }
 
 impl App {
-    pub fn new() -> io::Result<Self> {
-        let cwd = env::current_dir()?;
+    pub fn new(start_dir: Option<PathBuf>) -> io::Result<Self> {
+        let cwd = resolve_start_dir(start_dir)?;
         let entries = read_entries(&cwd)?;
 
         Ok(Self {
@@ -94,6 +95,7 @@ impl App {
             ffmpeg_scroll: 0,
             show_keybinds: false,
             ffmpeg_spinner_frame: 0,
+            right_tab: RightTab::Trim,
             running_trim: None,
         })
     }
@@ -123,6 +125,100 @@ impl App {
     pub fn ffmpeg_spinner_glyph(&self) -> char {
         spinner_frames()[self.ffmpeg_spinner_frame]
     }
+
+    pub fn right_tab(&self) -> RightTab {
+        self.right_tab
+    }
+
+    pub fn select_next_right_tab(&mut self) {
+        self.right_tab = self.right_tab.next();
+    }
+
+    pub fn select_previous_right_tab(&mut self) {
+        self.right_tab = self.right_tab.previous();
+    }
+
+    pub fn select_right_tab_by_number(&mut self, number: usize) -> bool {
+        let Some(tab) = RightTab::from_number(number) else {
+            return false;
+        };
+        self.right_tab = tab;
+        true
+    }
+
+    pub fn should_treat_digit_as_trim_input(&self, focus: Focus) -> bool {
+        if focus != Focus::RightTop || self.right_tab != RightTab::Trim {
+            return false;
+        }
+
+        matches!(
+            self.active_input,
+            InputField::Start
+                | InputField::End
+                | InputField::Fps
+                | InputField::Bitrate
+                | InputField::Output
+        )
+    }
+
+    pub fn can_focus_right_bottom(&self) -> bool {
+        self.right_tab == RightTab::Trim
+    }
+
+    pub fn normalize_focus(&self, focus: &mut Focus) {
+        if !self.can_focus_right_bottom() && *focus == Focus::RightBottom {
+            *focus = Focus::RightTop;
+        }
+    }
+
+    pub fn next_focus(&self, current: Focus) -> Focus {
+        if self.can_focus_right_bottom() {
+            current.next_window()
+        } else {
+            match current {
+                Focus::Left => Focus::RightTop,
+                Focus::RightTop | Focus::RightBottom => Focus::Left,
+            }
+        }
+    }
+
+    pub fn previous_focus(&self, current: Focus) -> Focus {
+        if self.can_focus_right_bottom() {
+            current.previous_window()
+        } else {
+            match current {
+                Focus::Left => Focus::RightTop,
+                Focus::RightTop | Focus::RightBottom => Focus::Left,
+            }
+        }
+    }
+}
+
+fn resolve_start_dir(start_dir: Option<PathBuf>) -> io::Result<PathBuf> {
+    let Some(path) = start_dir else {
+        return env::current_dir();
+    };
+
+    let absolute = if path.is_absolute() {
+        path
+    } else {
+        env::current_dir()?.join(path)
+    };
+
+    let metadata = fs::metadata(&absolute).map_err(|err| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Invalid start directory '{}': {err}", absolute.display()),
+        )
+    })?;
+    if !metadata.is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Start path is not a directory: {}", absolute.display()),
+        ));
+    }
+
+    Ok(absolute)
 }
 
 fn spinner_frames() -> &'static [char] {
