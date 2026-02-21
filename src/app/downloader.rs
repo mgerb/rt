@@ -166,10 +166,9 @@ impl App {
                 self.downloader_url_cursor -= 1;
             }
             DownloaderStep::QualitySelect => {
-                self.downloader_step = DownloaderStep::UrlInput;
-                self.downloader_option_focus = None;
+                self.return_to_downloader_url_input();
                 self.status_message =
-                    "Returned to URL edit step. Press Enter to refresh qualities.".to_string();
+                    "Returned to URL input. Enter a URL to fetch qualities.".to_string();
             }
         }
     }
@@ -434,7 +433,7 @@ impl App {
                     .append_line(format!("Detected {total} video quality options."));
             }
             DownloaderProbeResult::Failed { error } => {
-                self.downloader_step = DownloaderStep::UrlInput;
+                self.return_to_downloader_url_input();
                 self.downloader_output
                     .replace_with_command_error(&command_line, &error);
                 self.status_message = error;
@@ -702,6 +701,13 @@ impl App {
 
     fn append_downloader_output_line(&mut self, line: String) {
         self.downloader_output.append_line(line);
+    }
+
+    fn return_to_downloader_url_input(&mut self) {
+        self.downloader_step = DownloaderStep::UrlInput;
+        self.downloader_option_focus = None;
+        self.downloader_url.clear();
+        self.downloader_url_cursor = 0;
     }
 }
 

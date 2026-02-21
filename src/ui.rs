@@ -159,6 +159,8 @@ fn render_keybinds_popup(frame: &mut Frame) {
             "Backspace",
             "clear time piece / delete FPS/bitrate/scale/output char",
         ),
+        keybind_row("Up/Down", "scroll editor form"),
+        keybind_row("PgUp/PgDn or Ctrl+u/d", "page editor form"),
         keybind_row("Enter", "run editor export"),
         Line::from(""),
         keybind_section("TOOL OUTPUT"),

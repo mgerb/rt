@@ -119,11 +119,21 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                             app.select_next_right_tab();
                             focus = Focus::RightTop;
                         }
+                        KeyCode::Char('u')
+                            if focus == Focus::RightTop && app.right_tab() == RightTab::Editor =>
+                        {
+                            app.page_editor_form_up();
+                        }
                         KeyCode::Char('u') if focus == Focus::RightBottom => {
                             match app.right_tab() {
                                 RightTab::Editor => app.page_ffmpeg_output_up(),
                                 RightTab::Downloader => app.page_downloader_output_up(),
                             }
+                        }
+                        KeyCode::Char('d')
+                            if focus == Focus::RightTop && app.right_tab() == RightTab::Editor =>
+                        {
+                            app.page_editor_form_down();
                         }
                         KeyCode::Char('d') | KeyCode::Char('p') if focus == Focus::RightBottom => {
                             match app.right_tab() {
@@ -166,6 +176,10 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                         RightTab::Editor => match key.code {
                             KeyCode::Tab => app.next_input(),
                             KeyCode::BackTab => app.previous_input(),
+                            KeyCode::Down => app.scroll_editor_form_down(),
+                            KeyCode::Up => app.scroll_editor_form_up(),
+                            KeyCode::PageDown => app.page_editor_form_down(),
+                            KeyCode::PageUp => app.page_editor_form_up(),
                             KeyCode::Right => app.move_cursor_right(),
                             KeyCode::Left => app.move_cursor_left(),
                             KeyCode::Char('h') if app.active_input == InputField::Format => {

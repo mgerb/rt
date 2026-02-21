@@ -52,6 +52,7 @@ pub struct App {
     pub(crate) selected_video_stats: Option<VideoStats>,
     selected_video_bounds: Option<VideoBounds>,
     pub(crate) status_message: String,
+    pub(crate) editor_form_scroll: usize,
     pub(crate) ffmpeg_output: ToolOutput,
     pub(crate) downloader_url: String,
     pub(crate) downloader_url_cursor: usize,
@@ -196,6 +197,7 @@ impl App {
             selected_video_stats: None,
             selected_video_bounds: None,
             status_message: "Select a media file in the left pane.".to_string(),
+            editor_form_scroll: 0,
             ffmpeg_output: ToolOutput::empty(),
             downloader_url: String::new(),
             downloader_url_cursor: 0,
@@ -259,6 +261,10 @@ impl App {
 
     pub fn ffmpeg_output_lines(&self) -> &[String] {
         self.ffmpeg_output.lines()
+    }
+
+    pub fn editor_form_scroll(&self) -> usize {
+        self.editor_form_scroll
     }
 
     pub fn ffmpeg_output_scroll(&self) -> usize {

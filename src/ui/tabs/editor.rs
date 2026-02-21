@@ -37,6 +37,7 @@ pub fn render_editor_tab(frame: &mut Frame, app: &App, focus: Focus, area: Rect)
 
 fn render_editor_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
     let mut lines = Vec::new();
+    let mut focused_line_index = None;
     if !app.ffmpeg_available() {
         lines.push(ffmpeg_warning_line(
             "WARNING: ffmpeg not found in PATH. Editor export is disabled.",
@@ -76,7 +77,6 @@ fn render_editor_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
         lines.push(editor_row("Path", video.display().to_string()));
         lines.push(Line::from(""));
         lines.push(editor_section("VIDEO STATS"));
-        lines.push(Line::from(""));
 
         if let Some(stats) = &app.selected_video_stats {
             lines.push(editor_row("Duration", stats.duration.clone()));
@@ -90,29 +90,39 @@ fn render_editor_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
             lines.push(editor_row("Stats", "unavailable".to_string()));
         }
 
-        lines.push(Line::from(""));
         lines.push(editor_separator());
-        lines.push(Line::from(""));
         lines.push(editor_section("TIME RANGE"));
-        lines.push(Line::from(""));
         lines.push(input_hint_line("", "HH:MM:SS"));
+        if start_active_part.is_some() {
+            focused_line_index = Some(lines.len());
+        }
         lines.push(time_input_line(
             "Start time",
             &app.start_time,
             start_active_part,
         ));
+        if end_active_part.is_some() {
+            focused_line_index = Some(lines.len());
+        }
         lines.push(time_input_line("End time", &app.end_time, end_active_part));
-        lines.push(Line::from(""));
         lines.push(editor_section("OUTPUT"));
-        lines.push(Line::from(""));
+        if format_active {
+            focused_line_index = Some(lines.len());
+        }
         lines.push(choice_input_line(
             "Format",
             app.output_format,
             format_active,
         ));
         if app.video_options_enabled() {
+            if fps_active_cursor.is_some() {
+                focused_line_index = Some(lines.len());
+            }
             lines.push(input_line("FPS", &app.output_fps, fps_active_cursor));
             if app.bitrate_enabled() {
+                if bitrate_active_cursor.is_some() {
+                    focused_line_index = Some(lines.len());
+                }
                 lines.push(input_line(
                     "Bitrate",
                     &app.output_bitrate_kbps,
@@ -121,12 +131,18 @@ fn render_editor_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
             } else {
                 lines.push(disabled_input_line("Bitrate", "n/a for GIF"));
             }
+            if scale_percent_active_cursor.is_some() {
+                focused_line_index = Some(lines.len());
+            }
             lines.push(input_line_with_suffix(
                 "Scale %",
                 &app.output_scale_percent,
                 scale_percent_active_cursor,
                 &preview_scaled_resolution(app),
             ));
+            if remove_audio_active {
+                focused_line_index = Some(lines.len());
+            }
             lines.push(checkbox_input_line(
                 "Remove audio",
                 app.remove_audio,
@@ -138,8 +154,10 @@ fn render_editor_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
             lines.push(disabled_input_line("Scale %", "n/a for audio-only"));
             lines.push(disabled_input_line("Remove audio", "n/a for audio-only"));
         }
+        if output_active_cursor.is_some() {
+            focused_line_index = Some(lines.len());
+        }
         lines.push(input_line("Output", &app.output_name, output_active_cursor));
-        lines.push(Line::from(""));
     } else {
         lines.push(editor_section("NO VIDEO SELECTED"));
         lines.push(Line::from(""));
@@ -149,21 +167,42 @@ fn render_editor_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
         lines.push(Line::from(
             "Supported: mp4, mov, mkv, avi, webm, m4v, mpeg, mpg, wmv, flv",
         ));
-        lines.push(Line::from(""));
+    }
+
+    let panel = Block::default()
+        .borders(Borders::ALL)
+        .border_style(pane_border_style(
+            focus == Focus::RightTop,
+            Color::LightYellow,
+        ))
+        .title("Editor");
+    let inner = panel.inner(area);
+    let visible_line_count = inner.height as usize;
+    let max_scroll_top = lines.len().saturating_sub(visible_line_count);
+    let mut scroll_top = app.editor_form_scroll().min(max_scroll_top);
+
+    // Keep the active editor input visible when Tab/Shift+Tab changes focus.
+    if focus == Focus::RightTop
+        && visible_line_count > 0
+        && let Some(focused_line_index) = focused_line_index
+    {
+        if focused_line_index < scroll_top {
+            scroll_top = focused_line_index;
+        } else {
+            let visible_bottom = scroll_top + visible_line_count.saturating_sub(1);
+            if focused_line_index > visible_bottom {
+                scroll_top =
+                    focused_line_index.saturating_sub(visible_line_count.saturating_sub(1));
+            }
+        }
+        scroll_top = scroll_top.min(max_scroll_top);
     }
 
     let details = Paragraph::new(lines)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(pane_border_style(
-                    focus == Focus::RightTop,
-                    Color::LightYellow,
-                ))
-                .title("Editor"),
-        )
+        .block(panel)
         .alignment(Alignment::Left)
-        .wrap(Wrap { trim: false });
+        .wrap(Wrap { trim: false })
+        .scroll((scroll_top.min(u16::MAX as usize) as u16, 0));
 
     frame.render_widget(details, area);
 }
