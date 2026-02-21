@@ -1,5 +1,5 @@
-// yt-dlp tab rendering.
-// - Shows the yt-dlp download form (URL + target directory) in the top pane.
+// Downloader tab rendering.
+// - Shows the downloader form (URL + target directory) in the top pane.
 // - Reuses the shared log panel component for streamed process output.
 // - Keeps layout/focus behavior consistent with the editor tab so navigation stays predictable.
 use ratatui::{
@@ -19,7 +19,7 @@ use super::super::{
 
 const INPUT_LABEL_COL_WIDTH: usize = 11;
 
-pub fn render_yt_dlp_tab(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
+pub fn render_downloader_tab(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
     let right_constraints = if focus == Focus::RightBottom {
         [Constraint::Percentage(30), Constraint::Percentage(70)]
     } else {
@@ -27,13 +27,13 @@ pub fn render_yt_dlp_tab(frame: &mut Frame, app: &App, focus: Focus, area: Rect)
     };
     let [top, bottom] = Layout::vertical(right_constraints).areas(area);
 
-    render_yt_dlp_form(frame, app, focus, top);
-    render_yt_dlp_output(frame, app, focus, bottom);
+    render_downloader_form(frame, app, focus, top);
+    render_downloader_output(frame, app, focus, bottom);
 }
 
-fn render_yt_dlp_form(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
+fn render_downloader_form(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
     let form_focused = focus == Focus::RightTop;
-    let cursor = form_focused.then_some(app.yt_dlp_url_cursor);
+    let cursor = form_focused.then_some(app.downloader_url_cursor);
 
     let mut lines = vec![
         section("DOWNLOAD SETUP"),
@@ -41,14 +41,17 @@ fn render_yt_dlp_form(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
         row("Tool", "yt-dlp".to_string()),
         row("Directory", app.cwd.display().to_string()),
         Line::from(""),
-        input_line("URL", &app.yt_dlp_url, cursor),
+        input_line("URL", &app.downloader_url, cursor),
         Line::from(""),
         Line::from("Press Enter to start the download."),
         Line::from("Downloaded files are saved into the current browser directory."),
     ];
 
-    if !app.yt_dlp_available() {
-        lines.insert(2, warning("WARNING: yt-dlp not found in PATH. Downloads are disabled."));
+    if !app.downloader_available() {
+        lines.insert(
+            2,
+            warning("WARNING: Downloader requires yt-dlp in PATH. Downloads are disabled."),
+        );
         lines.insert(3, warning("Install yt-dlp, then restart this app."));
         lines.insert(4, Line::from(""));
     }
@@ -58,7 +61,7 @@ fn render_yt_dlp_form(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(pane_border_style(form_focused, Color::LightYellow))
-                .title("yt-dlp"),
+                .title("Downloader"),
         )
         .alignment(Alignment::Left)
         .wrap(Wrap { trim: true });
@@ -66,15 +69,15 @@ fn render_yt_dlp_form(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
     frame.render_widget(panel, area);
 }
 
-fn render_yt_dlp_output(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
-    let title = if app.yt_dlp_is_running() {
+fn render_downloader_output(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
+    let title = if app.downloader_is_running() {
         format!(
-            "yt-dlp output {} running (scroll: {})",
-            app.yt_dlp_spinner_glyph(),
-            app.yt_dlp_output_scroll()
+            "downloader output {} running (scroll: {})",
+            app.downloader_spinner_glyph(),
+            app.downloader_output_scroll()
         )
     } else {
-        format!("yt-dlp output (scroll: {})", app.yt_dlp_output_scroll())
+        format!("downloader output (scroll: {})", app.downloader_output_scroll())
     };
 
     render_log_panel(
@@ -82,8 +85,8 @@ fn render_yt_dlp_output(frame: &mut Frame, app: &App, focus: Focus, area: Rect) 
         area,
         LogPanelStateView {
             title: &title,
-            lines: app.yt_dlp_output_lines(),
-            scroll: app.yt_dlp_output_scroll(),
+            lines: app.downloader_output_lines(),
+            scroll: app.downloader_output_scroll(),
             focused: focus == Focus::RightBottom,
             accent_color: Color::LightBlue,
             trim_wrapped_lines: false,

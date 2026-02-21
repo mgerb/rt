@@ -40,44 +40,44 @@ impl Focus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RightTab {
     Editor,
-    YtDlp,
+    Downloader,
 }
 
 impl RightTab {
-    pub const ALL: [Self; 2] = [Self::Editor, Self::YtDlp];
+    pub const ALL: [Self; 2] = [Self::Editor, Self::Downloader];
 
     pub fn next(self) -> Self {
         match self {
-            Self::Editor => Self::YtDlp,
-            Self::YtDlp => Self::Editor,
+            Self::Editor => Self::Downloader,
+            Self::Downloader => Self::Editor,
         }
     }
 
     pub fn previous(self) -> Self {
         match self {
-            Self::Editor => Self::YtDlp,
-            Self::YtDlp => Self::Editor,
+            Self::Editor => Self::Downloader,
+            Self::Downloader => Self::Editor,
         }
     }
 
     pub fn number(self) -> usize {
         match self {
             Self::Editor => 1,
-            Self::YtDlp => 2,
+            Self::Downloader => 2,
         }
     }
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Editor => "Editor",
-            Self::YtDlp => "yt-dlp",
+            Self::Downloader => "Downloader",
         }
     }
 
     pub fn from_number(number: usize) -> Option<Self> {
         match number {
             1 => Some(Self::Editor),
-            2 => Some(Self::YtDlp),
+            2 => Some(Self::Downloader),
             _ => None,
         }
     }
