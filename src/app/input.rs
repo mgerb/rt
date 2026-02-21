@@ -85,11 +85,6 @@ impl App {
         }
     }
 
-    pub fn focus_output_name(&mut self) {
-        self.active_input = InputField::Output;
-        self.output_cursor = self.output_name.chars().count();
-    }
-
     pub fn move_cursor_left(&mut self) {
         match self.active_input {
             InputField::Format => self.select_previous_output_format(),
