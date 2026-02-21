@@ -179,7 +179,7 @@ fn render_editor_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
     let inner = panel.inner(area);
     let visible_line_count = inner.height as usize;
     let max_scroll_top = lines.len().saturating_sub(visible_line_count);
-    let mut scroll_top = app.editor_form_scroll().min(max_scroll_top);
+    let mut scroll_top = app.clamp_editor_form_scroll(max_scroll_top);
 
     // Keep the active editor input visible when Tab/Shift+Tab changes focus.
     if focus == Focus::RightTop
@@ -209,6 +209,7 @@ fn render_editor_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
 
 fn render_ffmpeg_output_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
     let title = "TOOL OUTPUT";
+    let visible_line_count = area.height.saturating_sub(2).max(1) as usize;
 
     render_log_panel(
         frame,
@@ -216,7 +217,7 @@ fn render_ffmpeg_output_pane(frame: &mut Frame, app: &App, focus: Focus, area: R
         LogPanelStateView {
             title,
             lines: app.ffmpeg_output_lines(),
-            scroll: app.ffmpeg_output_scroll(),
+            scroll: app.clamped_ffmpeg_output_scroll(visible_line_count),
             focused: focus == Focus::RightBottom,
             accent_color: Color::LightMagenta,
             trim_wrapped_lines: false,

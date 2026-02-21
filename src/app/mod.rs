@@ -10,6 +10,7 @@ mod input;
 mod tool_output;
 
 use std::{
+    cell::Cell,
     env, fs, io,
     path::PathBuf,
     process::{Child, Command, Stdio},
@@ -52,7 +53,7 @@ pub struct App {
     pub(crate) selected_video_stats: Option<VideoStats>,
     selected_video_bounds: Option<VideoBounds>,
     pub(crate) status_message: String,
-    pub(crate) editor_form_scroll: usize,
+    pub(crate) editor_form_scroll: Cell<usize>,
     pub(crate) ffmpeg_output: ToolOutput,
     pub(crate) downloader_url: String,
     pub(crate) downloader_video_title: Option<String>,
@@ -70,6 +71,7 @@ pub struct App {
     downloader_available: bool,
     gpu_h264_encoder_available: bool,
     pub(crate) show_keybinds: bool,
+    pub(crate) keybinds_scroll: Cell<usize>,
     pub(crate) ffmpeg_spinner_frame: usize,
     pub(crate) downloader_spinner_frame: usize,
     pub(crate) right_tab: RightTab,
@@ -200,7 +202,7 @@ impl App {
             selected_video_stats: None,
             selected_video_bounds: None,
             status_message: "Select a media file in the left pane.".to_string(),
-            editor_form_scroll: 0,
+            editor_form_scroll: Cell::new(0),
             ffmpeg_output: ToolOutput::empty(),
             downloader_url: String::new(),
             downloader_video_title: None,
@@ -221,6 +223,7 @@ impl App {
             downloader_available,
             gpu_h264_encoder_available,
             show_keybinds: false,
+            keybinds_scroll: Cell::new(0),
             ffmpeg_spinner_frame: 0,
             downloader_spinner_frame: 0,
             right_tab: RightTab::Editor,
@@ -234,10 +237,44 @@ impl App {
 
     pub fn toggle_keybinds(&mut self) {
         self.show_keybinds = !self.show_keybinds;
+        if self.show_keybinds {
+            self.keybinds_scroll.set(0);
+        }
     }
 
     pub fn hide_keybinds(&mut self) {
         self.show_keybinds = false;
+        self.keybinds_scroll.set(0);
+    }
+
+    pub fn keybinds_scroll(&self) -> usize {
+        self.keybinds_scroll.get()
+    }
+
+    pub fn clamp_keybinds_scroll(&self, max_scroll_top: usize) -> usize {
+        let clamped = self.keybinds_scroll().min(max_scroll_top);
+        self.keybinds_scroll.set(clamped);
+        clamped
+    }
+
+    pub fn scroll_keybinds_down(&mut self) {
+        self.keybinds_scroll
+            .set(self.keybinds_scroll().saturating_add(1));
+    }
+
+    pub fn scroll_keybinds_up(&mut self) {
+        self.keybinds_scroll
+            .set(self.keybinds_scroll().saturating_sub(1));
+    }
+
+    pub fn page_keybinds_down(&mut self) {
+        self.keybinds_scroll
+            .set(self.keybinds_scroll().saturating_add(8));
+    }
+
+    pub fn page_keybinds_up(&mut self) {
+        self.keybinds_scroll
+            .set(self.keybinds_scroll().saturating_sub(8));
     }
 
     pub fn tick(&mut self) {
@@ -269,11 +306,18 @@ impl App {
     }
 
     pub fn editor_form_scroll(&self) -> usize {
-        self.editor_form_scroll
+        self.editor_form_scroll.get()
     }
 
-    pub fn ffmpeg_output_scroll(&self) -> usize {
-        self.ffmpeg_output.scroll()
+    pub fn clamp_editor_form_scroll(&self, max_scroll_top: usize) -> usize {
+        let clamped = self.editor_form_scroll().min(max_scroll_top);
+        self.editor_form_scroll.set(clamped);
+        clamped
+    }
+
+    pub fn clamped_ffmpeg_output_scroll(&self, visible_line_count: usize) -> usize {
+        self.ffmpeg_output
+            .clamped_scroll_for_viewport(visible_line_count)
     }
 
     pub fn downloader_available(&self) -> bool {
@@ -284,8 +328,9 @@ impl App {
         self.downloader_output.lines()
     }
 
-    pub fn downloader_output_scroll(&self) -> usize {
-        self.downloader_output.scroll()
+    pub fn clamped_downloader_output_scroll(&self, visible_line_count: usize) -> usize {
+        self.downloader_output
+            .clamped_scroll_for_viewport(visible_line_count)
     }
 
     pub fn gpu_h264_encoder_available(&self) -> bool {

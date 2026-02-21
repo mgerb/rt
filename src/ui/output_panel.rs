@@ -22,13 +22,15 @@ pub struct LogPanelStateView<'a> {
 pub fn render_log_panel(frame: &mut Frame, area: Rect, panel: LogPanelStateView<'_>) {
     const OVERSCAN_MULTIPLIER: usize = 4;
     const MIN_WINDOW_LINES: usize = 64;
+    const FOCUS_HINT: &str = "(ctrl+o)";
 
     let mut block = Block::default()
         .borders(Borders::ALL)
         .border_style(log_panel_border_style(panel.focused, panel.accent_color))
-        .title_top(Line::from(panel.title).left_aligned());
+        .title_top(Line::from(panel.title).left_aligned())
+        .title_top(Line::from(FOCUS_HINT).right_aligned());
     if let Some(hint) = panel.title_hint_right {
-        block = block.title_top(Line::from(hint).right_aligned());
+        block = block.title_bottom(Line::from(hint).right_aligned());
     }
     let inner = block.inner(area);
     frame.render_widget(block, area);

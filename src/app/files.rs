@@ -162,23 +162,27 @@ impl App {
     }
 
     pub fn scroll_editor_form_down(&mut self) {
-        self.editor_form_scroll = self.editor_form_scroll.saturating_add(1);
+        self.editor_form_scroll
+            .set(self.editor_form_scroll().saturating_add(1));
     }
 
     pub fn scroll_editor_form_up(&mut self) {
-        self.editor_form_scroll = self.editor_form_scroll.saturating_sub(1);
+        self.editor_form_scroll
+            .set(self.editor_form_scroll().saturating_sub(1));
     }
 
     pub fn page_editor_form_down(&mut self) {
-        self.editor_form_scroll = self
-            .editor_form_scroll
-            .saturating_add(EDITOR_FORM_PAGE_STEP);
+        self.editor_form_scroll.set(
+            self.editor_form_scroll()
+                .saturating_add(EDITOR_FORM_PAGE_STEP),
+        );
     }
 
     pub fn page_editor_form_up(&mut self) {
-        self.editor_form_scroll = self
-            .editor_form_scroll
-            .saturating_sub(EDITOR_FORM_PAGE_STEP);
+        self.editor_form_scroll.set(
+            self.editor_form_scroll()
+                .saturating_sub(EDITOR_FORM_PAGE_STEP),
+        );
     }
 
     fn change_dir(&mut self, new_cwd: PathBuf) -> io::Result<()> {
@@ -260,7 +264,7 @@ impl App {
         self.overwrite_fps_on_next_type = true;
         self.overwrite_bitrate_on_next_type = true;
         self.overwrite_scale_percent_on_next_type = true;
-        self.editor_form_scroll = 0;
+        self.editor_form_scroll.set(0);
         self.selected_video = Some(path);
     }
 
@@ -284,7 +288,7 @@ impl App {
             self.output_scale_percent = "100".to_string();
             self.output_scale_percent_cursor = self.output_scale_percent.chars().count();
             self.output_cursor = 0;
-            self.editor_form_scroll = 0;
+            self.editor_form_scroll.set(0);
         }
     }
 }

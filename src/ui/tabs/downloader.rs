@@ -68,6 +68,7 @@ fn render_downloader_form(frame: &mut Frame, app: &App, focus: Focus, area: Rect
 
 fn render_downloader_output(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
     let title = "TOOL OUTPUT";
+    let visible_line_count = area.height.saturating_sub(2).max(1) as usize;
 
     render_log_panel(
         frame,
@@ -75,7 +76,7 @@ fn render_downloader_output(frame: &mut Frame, app: &App, focus: Focus, area: Re
         LogPanelStateView {
             title,
             lines: app.downloader_output_lines(),
-            scroll: app.downloader_output_scroll(),
+            scroll: app.clamped_downloader_output_scroll(visible_line_count),
             focused: focus == Focus::RightBottom,
             accent_color: Color::LightBlue,
             trim_wrapped_lines: false,

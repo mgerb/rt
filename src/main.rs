@@ -99,8 +99,19 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                 }
 
                 if app.show_keybinds {
-                    if key.code == KeyCode::Esc {
-                        app.hide_keybinds();
+                    match key.code {
+                        KeyCode::Esc => app.hide_keybinds(),
+                        KeyCode::Down | KeyCode::Char('j') => app.scroll_keybinds_down(),
+                        KeyCode::Up | KeyCode::Char('k') => app.scroll_keybinds_up(),
+                        KeyCode::PageDown => app.page_keybinds_down(),
+                        KeyCode::PageUp => app.page_keybinds_up(),
+                        KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            app.page_keybinds_down()
+                        }
+                        KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            app.page_keybinds_up()
+                        }
+                        _ => {}
                     }
                     continue;
                 }
@@ -118,6 +129,11 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                         KeyCode::Char('n') => {
                             app.select_next_right_tab();
                             focus = Focus::RightTop;
+                        }
+                        KeyCode::Char('o') => {
+                            if app.can_focus_right_bottom() {
+                                focus = Focus::RightBottom;
+                            }
                         }
                         KeyCode::Char('u')
                             if focus == Focus::RightTop && app.right_tab() == RightTab::Editor =>
