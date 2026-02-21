@@ -33,6 +33,10 @@ impl App {
                 self.output_fps_cursor = self.output_fps.chars().count();
             }
             InputField::Fps => {
+                self.active_input = InputField::Bitrate;
+                self.output_bitrate_cursor = self.output_bitrate_kbps.chars().count();
+            }
+            InputField::Bitrate => {
                 self.active_input = InputField::RemoveAudio;
             }
             InputField::RemoveAudio => {
@@ -69,9 +73,13 @@ impl App {
                 self.end_part = 2;
             }
             InputField::Fps => self.active_input = InputField::Format,
-            InputField::RemoveAudio => {
+            InputField::Bitrate => {
                 self.active_input = InputField::Fps;
                 self.output_fps_cursor = self.output_fps.chars().count();
+            }
+            InputField::RemoveAudio => {
+                self.active_input = InputField::Bitrate;
+                self.output_bitrate_cursor = self.output_bitrate_kbps.chars().count();
             }
             InputField::Output => self.active_input = InputField::RemoveAudio,
         }
@@ -86,6 +94,9 @@ impl App {
         match self.active_input {
             InputField::Format => self.select_previous_output_format(),
             InputField::Fps => self.output_fps_cursor = self.output_fps_cursor.saturating_sub(1),
+            InputField::Bitrate => {
+                self.output_bitrate_cursor = self.output_bitrate_cursor.saturating_sub(1)
+            }
             InputField::Output => self.output_cursor = self.output_cursor.saturating_sub(1),
             _ => {}
         }
@@ -97,6 +108,10 @@ impl App {
             InputField::Fps => {
                 let max = self.output_fps.chars().count();
                 self.output_fps_cursor = (self.output_fps_cursor + 1).min(max);
+            }
+            InputField::Bitrate => {
+                let max = self.output_bitrate_kbps.chars().count();
+                self.output_bitrate_cursor = (self.output_bitrate_cursor + 1).min(max);
             }
             InputField::Output => {
                 let max = self.output_name.chars().count();
@@ -130,6 +145,14 @@ impl App {
                     self.output_fps_cursor += 1;
                 }
             }
+            InputField::Bitrate => {
+                if ch.is_ascii_digit() {
+                    let byte_index =
+                        byte_index_for_char(&self.output_bitrate_kbps, self.output_bitrate_cursor);
+                    self.output_bitrate_kbps.insert(byte_index, ch);
+                    self.output_bitrate_cursor += 1;
+                }
+            }
             InputField::RemoveAudio => {
                 if ch == ' ' {
                     self.toggle_remove_audio();
@@ -161,6 +184,16 @@ impl App {
                 let end = byte_index_for_char(&self.output_fps, remove_char_index + 1);
                 self.output_fps.replace_range(start..end, "");
                 self.output_fps_cursor -= 1;
+            }
+            InputField::Bitrate => {
+                if self.output_bitrate_cursor == 0 {
+                    return;
+                }
+                let remove_char_index = self.output_bitrate_cursor - 1;
+                let start = byte_index_for_char(&self.output_bitrate_kbps, remove_char_index);
+                let end = byte_index_for_char(&self.output_bitrate_kbps, remove_char_index + 1);
+                self.output_bitrate_kbps.replace_range(start..end, "");
+                self.output_bitrate_cursor -= 1;
             }
             InputField::RemoveAudio => {}
             InputField::Output => {
