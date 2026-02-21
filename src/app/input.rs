@@ -1,4 +1,4 @@
-// Trim-form input editing logic.
+// Editor-form input editing logic.
 // - Implements Tab/Shift+Tab traversal across time/output fields.
 // - Handles cursor movement and character insert/delete in editable fields.
 // - Keeps output names/extensions normalized and collision-safe.

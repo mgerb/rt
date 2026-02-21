@@ -31,7 +31,7 @@ pub fn render(frame: &mut Frame, app: &App, focus: Focus) {
     render_right_tabs(frame, app, focus, tabs_area);
 
     match app.right_tab() {
-        RightTab::Trim => tabs::trim::render_trim_tab(frame, app, focus, right_content),
+        RightTab::Editor => tabs::editor::render_editor_tab(frame, app, focus, right_content),
         RightTab::YtDlp => tabs::yt_dlp::render_yt_dlp_tab(frame, app, focus, right_content),
     }
 
@@ -142,14 +142,14 @@ fn render_keybinds_popup(frame: &mut Frame) {
         keybind_row("d", "delete selected file (confirm modal)"),
         keybind_row("r", "refresh listing"),
         Line::from(""),
-        keybind_section("TRIM PANEL"),
+        keybind_section("EDITOR PANEL"),
         keybind_row("Tab / Shift+Tab", "move through time pieces and fields"),
         keybind_row("Space", "toggle focused checkbox"),
         keybind_row(
             "Backspace",
             "clear time piece / delete FPS/bitrate/scale/output char",
         ),
-        keybind_row("Enter", "run ffmpeg trim"),
+        keybind_row("Enter", "run editor export"),
         Line::from(""),
         keybind_section("YT-DLP PANEL"),
         keybind_row("Type URL", "edit download URL"),

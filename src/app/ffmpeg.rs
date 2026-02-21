@@ -15,7 +15,7 @@ use std::{
 
 use crate::media::summarize_ffmpeg_error;
 
-use super::{App, FfmpegEvent, FfmpegStream, RunningTrim};
+use super::{App, FfmpegEvent, FfmpegStream, RunningEditor};
 
 impl App {
     pub(super) fn start_ffmpeg_job(
@@ -47,7 +47,7 @@ impl App {
         self.ffmpeg_spinner_frame = 0;
         self.ffmpeg_output
             .begin_stream(&command_line, "Streaming ffmpeg output...");
-        self.running_trim = Some(RunningTrim {
+        self.running_editor = Some(RunningEditor {
             child,
             rx,
             command_line,
@@ -61,10 +61,10 @@ impl App {
         Ok(())
     }
 
-    pub(super) fn pump_running_trim_events(&mut self) {
+    pub(super) fn pump_running_editor_events(&mut self) {
         let mut streamed_lines = Vec::new();
 
-        if let Some(running) = self.running_trim.as_mut() {
+        if let Some(running) = self.running_editor.as_mut() {
             while let Ok(event) = running.rx.try_recv() {
                 match event {
                     FfmpegEvent::Chunk { stream, data } => {
@@ -85,9 +85,9 @@ impl App {
         }
     }
 
-    pub(super) fn try_finish_running_trim(&mut self) {
+    pub(super) fn try_finish_running_editor(&mut self) {
         let Some(status_result) = self
-            .running_trim
+            .running_editor
             .as_mut()
             .map(|running| running.child.try_wait())
         else {
@@ -95,18 +95,18 @@ impl App {
         };
 
         match status_result {
-            Ok(Some(status)) => self.finish_running_trim(status),
+            Ok(Some(status)) => self.finish_running_editor(status),
             Ok(None) => {}
             Err(err) => {
                 self.append_ffmpeg_output_line(format!("stderr: failed to poll ffmpeg: {err}"));
                 self.status_message = format!("Failed to monitor ffmpeg process: {err}");
-                self.running_trim = None;
+                self.running_editor = None;
             }
         }
     }
 
-    fn finish_running_trim(&mut self, status: ExitStatus) {
-        let Some(mut running) = self.running_trim.take() else {
+    fn finish_running_editor(&mut self, status: ExitStatus) {
+        let Some(mut running) = self.running_editor.take() else {
             return;
         };
 
@@ -282,7 +282,7 @@ where
 }
 
 fn consume_stream_chunk(
-    running: &mut RunningTrim,
+    running: &mut RunningEditor,
     stream: FfmpegStream,
     data: &[u8],
 ) -> Vec<String> {

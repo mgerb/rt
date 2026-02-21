@@ -1,4 +1,4 @@
-// Trim execution workflow.
+// Editor export workflow.
 // - Validates time range, format-specific options, and required output fields.
 // - Translates current form state into ffmpeg CLI arguments.
 // - Starts ffmpeg jobs and reports launch/validation errors back to the UI.
@@ -13,14 +13,14 @@ use crate::{
 use super::App;
 
 impl App {
-    pub fn trim_selected_video(&mut self) {
-        if self.running_trim.is_some() {
+    pub fn run_editor_export(&mut self) {
+        if self.running_editor.is_some() {
             self.status_message = "ffmpeg is already running. Wait for it to finish.".to_string();
             return;
         }
         if !self.ffmpeg_available() {
             self.status_message =
-                "ffmpeg was not found in PATH. Install ffmpeg to enable trimming.".to_string();
+                "ffmpeg was not found in PATH. Install ffmpeg to enable editing and export.".to_string();
             return;
         }
 

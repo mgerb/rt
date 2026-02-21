@@ -1,7 +1,7 @@
 // yt-dlp tab rendering.
 // - Shows the yt-dlp download form (URL + target directory) in the top pane.
 // - Reuses the shared log panel component for streamed process output.
-// - Keeps layout/focus behavior consistent with the trim tab so navigation stays predictable.
+// - Keeps layout/focus behavior consistent with the editor tab so navigation stays predictable.
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Layout, Rect},

@@ -1,5 +1,5 @@
-// Trim-tab rendering.
-// - Formats selected-video metadata and editable trim/output fields.
+// Editor-tab rendering.
+// - Formats selected-video metadata and editable editor/output fields.
 // - Highlights active inputs/focus state for keyboard-driven editing.
 // - Renders the ffmpeg output panel beneath the form.
 use ratatui::{
@@ -23,7 +23,7 @@ use super::super::{
 
 const INPUT_LABEL_COL_WIDTH: usize = 11;
 
-pub fn render_trim_tab(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
+pub fn render_editor_tab(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
     let right_constraints = if focus == Focus::RightBottom {
         [Constraint::Percentage(30), Constraint::Percentage(70)]
     } else {
@@ -31,15 +31,15 @@ pub fn render_trim_tab(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
     };
     let [top, bottom] = Layout::vertical(right_constraints).areas(area);
 
-    render_trim_pane(frame, app, focus, top);
+    render_editor_pane(frame, app, focus, top);
     render_ffmpeg_output_pane(frame, app, focus, bottom);
 }
 
-fn render_trim_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
+fn render_editor_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
     let mut lines = Vec::new();
     if !app.ffmpeg_available() {
         lines.push(ffmpeg_warning_line(
-            "WARNING: ffmpeg not found in PATH. Trimming is disabled.",
+            "WARNING: ffmpeg not found in PATH. Editor export is disabled.",
         ));
         lines.push(ffmpeg_warning_line(
             "Install ffmpeg, then restart this app.",
@@ -72,28 +72,28 @@ fn render_trim_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| video.display().to_string());
-        lines.push(trim_row("Video", filename));
-        lines.push(trim_row("Path", video.display().to_string()));
+        lines.push(editor_row("Video", filename));
+        lines.push(editor_row("Path", video.display().to_string()));
         lines.push(Line::from(""));
-        lines.push(trim_section("VIDEO STATS"));
+        lines.push(editor_section("VIDEO STATS"));
         lines.push(Line::from(""));
 
         if let Some(stats) = &app.selected_video_stats {
-            lines.push(trim_row("Duration", stats.duration.clone()));
-            lines.push(trim_row("Resolution", stats.resolution.clone()));
-            lines.push(trim_row("FPS", stats.fps.clone()));
-            lines.push(trim_row("Video", stats.video_codec.clone()));
-            lines.push(trim_row("Audio", stats.audio_codec.clone()));
-            lines.push(trim_row("Size", stats.size.clone()));
-            lines.push(trim_row("Bitrate", stats.bitrate.clone()));
+            lines.push(editor_row("Duration", stats.duration.clone()));
+            lines.push(editor_row("Resolution", stats.resolution.clone()));
+            lines.push(editor_row("FPS", stats.fps.clone()));
+            lines.push(editor_row("Video", stats.video_codec.clone()));
+            lines.push(editor_row("Audio", stats.audio_codec.clone()));
+            lines.push(editor_row("Size", stats.size.clone()));
+            lines.push(editor_row("Bitrate", stats.bitrate.clone()));
         } else {
-            lines.push(trim_row("Stats", "unavailable".to_string()));
+            lines.push(editor_row("Stats", "unavailable".to_string()));
         }
 
         lines.push(Line::from(""));
-        lines.push(trim_separator());
+        lines.push(editor_separator());
         lines.push(Line::from(""));
-        lines.push(trim_section("TIME RANGE"));
+        lines.push(editor_section("TIME RANGE"));
         lines.push(Line::from(""));
         lines.push(input_hint_line("", "HH:MM:SS"));
         lines.push(time_input_line(
@@ -103,7 +103,7 @@ fn render_trim_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
         ));
         lines.push(time_input_line("End time", &app.end_time, end_active_part));
         lines.push(Line::from(""));
-        lines.push(trim_section("OUTPUT"));
+        lines.push(editor_section("OUTPUT"));
         lines.push(Line::from(""));
         lines.push(choice_input_line(
             "Format",
@@ -141,7 +141,7 @@ fn render_trim_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
         lines.push(input_line("Output", &app.output_name, output_active_cursor));
         lines.push(Line::from(""));
     } else {
-        lines.push(trim_section("NO VIDEO SELECTED"));
+        lines.push(editor_section("NO VIDEO SELECTED"));
         lines.push(Line::from(""));
         lines.push(Line::from(
             "Select a video in the left pane and press Enter.",
@@ -160,7 +160,7 @@ fn render_trim_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
                     focus == Focus::RightTop,
                     Color::LightYellow,
                 ))
-                .title("Trim"),
+                .title("Editor"),
         )
         .alignment(Alignment::Left)
         .wrap(Wrap { trim: false });
@@ -185,7 +185,7 @@ fn render_ffmpeg_output_pane(frame: &mut Frame, app: &App, focus: Focus, area: R
     );
 }
 
-fn trim_section(title: &str) -> Line<'static> {
+fn editor_section(title: &str) -> Line<'static> {
     Line::styled(
         title.to_string(),
         Style::default()
@@ -203,14 +203,14 @@ fn ffmpeg_warning_line(message: &str) -> Line<'static> {
     )
 }
 
-fn trim_separator() -> Line<'static> {
+fn editor_separator() -> Line<'static> {
     Line::styled(
         "------------------------------------------------".to_string(),
         Style::default().fg(Color::DarkGray),
     )
 }
 
-fn trim_row(label: &str, value: String) -> Line<'static> {
+fn editor_row(label: &str, value: String) -> Line<'static> {
     const LABEL_COL_WIDTH: usize = 10;
     const VALUE_MAX_CHARS: usize = 64;
     let label_cell = format!("{label:<LABEL_COL_WIDTH$}");
