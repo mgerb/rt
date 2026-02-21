@@ -39,7 +39,13 @@ pub struct App {
     pub(crate) show_keybinds: bool,
     pub(crate) ffmpeg_spinner_frame: usize,
     pub(crate) right_tab: RightTab,
+    pending_delete: Option<PendingDelete>,
     running_trim: Option<RunningTrim>,
+}
+
+struct PendingDelete {
+    name: String,
+    path: PathBuf,
 }
 
 struct RunningTrim {
@@ -96,6 +102,7 @@ impl App {
             show_keybinds: false,
             ffmpeg_spinner_frame: 0,
             right_tab: RightTab::Trim,
+            pending_delete: None,
             running_trim: None,
         })
     }
@@ -191,6 +198,16 @@ impl App {
                 Focus::RightTop | Focus::RightBottom => Focus::Left,
             }
         }
+    }
+
+    pub fn has_pending_delete(&self) -> bool {
+        self.pending_delete.is_some()
+    }
+
+    pub fn pending_delete_target(&self) -> Option<(&str, &std::path::Path)> {
+        self.pending_delete
+            .as_ref()
+            .map(|pending| (pending.name.as_str(), pending.path.as_path()))
     }
 }
 

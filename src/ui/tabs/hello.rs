@@ -16,7 +16,7 @@ pub fn render_hello_tab(frame: &mut Frame, focus: Focus, area: Rect) {
         Line::from("HELLO"),
         Line::from(""),
         Line::from("This is a placeholder tab."),
-        Line::from("Press 1 for Trim or 2 for Hello."),
+        Line::from("Press Shift+H / Shift+L or 1 / 2 to switch tabs."),
     ];
 
     let hello = Paragraph::new(lines)

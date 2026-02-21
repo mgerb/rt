@@ -31,6 +31,23 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
             && let Event::Key(key) = event::read()?
             && key.kind == KeyEventKind::Press
         {
+            if app.has_pending_delete() {
+                if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
+                    break Ok(());
+                }
+
+                match key.code {
+                    KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
+                        app.confirm_pending_delete()
+                    }
+                    KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') => {
+                        app.cancel_pending_delete()
+                    }
+                    _ => {}
+                }
+                continue;
+            }
+
             if key.code == KeyCode::Char('?') {
                 app.toggle_keybinds();
                 continue;
@@ -43,6 +60,22 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                 continue;
             }
 
+            if key.modifiers == KeyModifiers::SHIFT {
+                match key.code {
+                    KeyCode::Char('H') => {
+                        app.select_previous_right_tab();
+                        app.normalize_focus(&mut focus);
+                        continue;
+                    }
+                    KeyCode::Char('L') => {
+                        app.select_next_right_tab();
+                        app.normalize_focus(&mut focus);
+                        continue;
+                    }
+                    _ => {}
+                }
+            }
+
             if key.modifiers.contains(KeyModifiers::CONTROL) {
                 match key.code {
                     KeyCode::Char('h') => focus = Focus::Left,
@@ -53,14 +86,6 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                     }
                     KeyCode::Char('j') => focus = app.next_focus(focus),
                     KeyCode::Char('k') => focus = app.previous_focus(focus),
-                    KeyCode::Char('n') => {
-                        app.select_next_right_tab();
-                        app.normalize_focus(&mut focus);
-                    }
-                    KeyCode::Char('p') => {
-                        app.select_previous_right_tab();
-                        app.normalize_focus(&mut focus);
-                    }
                     KeyCode::Char('c') => break Ok(()),
                     _ => {}
                 }
@@ -84,16 +109,14 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                     KeyCode::Char('q') => break Ok(()),
                     KeyCode::Down | KeyCode::Char('j') => app.next(),
                     KeyCode::Up | KeyCode::Char('k') => app.previous(),
-                    KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
+                    KeyCode::Enter => {
                         if app.activate_selected_entry()? {
                             focus = Focus::RightTop;
                         }
                     }
-                    KeyCode::Backspace
-                    | KeyCode::Left
-                    | KeyCode::Char('h')
-                    | KeyCode::Char('-') => app.go_parent_dir()?,
+                    KeyCode::Char('h') | KeyCode::Char('-') => app.go_parent_dir()?,
                     KeyCode::Char('_') => app.go_initial_dir()?,
+                    KeyCode::Char('d') => app.request_delete_selected_entry(),
                     KeyCode::Char('r') => app.reload()?,
                     _ => {}
                 },
