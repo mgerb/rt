@@ -37,3 +37,8 @@ cargo run -- /path/to/start/dir
 ### Downloader
 
 ![Downloader screenshot](screenshots/downloader.png)
+
+## Disclaimer
+
+Built almost entirely with Codex 5.3. This was an experiment to see how far I
+coulud push LLM tooling.
