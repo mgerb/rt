@@ -55,11 +55,13 @@ pub struct App {
     pub(crate) editor_form_scroll: usize,
     pub(crate) ffmpeg_output: ToolOutput,
     pub(crate) downloader_url: String,
+    pub(crate) downloader_video_title: Option<String>,
     pub(crate) downloader_url_cursor: usize,
     pub(crate) downloader_step: DownloaderStep,
     pub(crate) downloader_audio_only: bool,
     pub(crate) downloader_sponsorblock: bool,
     pub(crate) downloader_subtitles: bool,
+    pub(crate) downloader_playlist: bool,
     pub(crate) downloader_option_focus: Option<usize>,
     downloader_quality_choices: Vec<DownloaderQualityChoice>,
     downloader_quality_index: usize,
@@ -151,6 +153,7 @@ enum DownloaderEvent {
 enum DownloaderProbeResult {
     Success {
         choices: Vec<DownloaderQualityChoice>,
+        title: Option<String>,
     },
     Failed {
         error: String,
@@ -200,11 +203,13 @@ impl App {
             editor_form_scroll: 0,
             ffmpeg_output: ToolOutput::empty(),
             downloader_url: String::new(),
+            downloader_video_title: None,
             downloader_url_cursor: 0,
             downloader_step: DownloaderStep::UrlInput,
             downloader_audio_only: false,
             downloader_sponsorblock: false,
             downloader_subtitles: false,
+            downloader_playlist: false,
             downloader_option_focus: None,
             downloader_quality_choices: vec![DownloaderQualityChoice {
                 selector: "bestvideo+bestaudio/best".to_string(),

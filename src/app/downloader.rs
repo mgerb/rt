@@ -31,7 +31,7 @@ const QUALITY_RES_WIDTH: usize = 9;
 const QUALITY_FPS_WIDTH: usize = 6;
 const QUALITY_SIZE_WIDTH: usize = 10;
 const QUALITY_AUD_WIDTH: usize = 5;
-const DOWNLOADER_OPTION_COUNT: usize = 3;
+const DOWNLOADER_BASE_OPTION_COUNT: usize = 3;
 
 impl App {
     pub fn downloader_step(&self) -> DownloaderStep {
@@ -55,6 +55,10 @@ impl App {
         format_quality_columns("ID", "EXT", "RES", "FPS", "SIZE", "AUDIO", "TYPE")
     }
 
+    pub fn downloader_video_title(&self) -> Option<&str> {
+        self.downloader_video_title.as_deref()
+    }
+
     pub fn downloader_audio_only_enabled(&self) -> bool {
         self.downloader_audio_only
     }
@@ -67,9 +71,18 @@ impl App {
         self.downloader_subtitles
     }
 
+    pub fn downloader_playlist_enabled(&self) -> bool {
+        self.downloader_playlist_available() && self.downloader_playlist
+    }
+
+    pub fn downloader_playlist_available(&self) -> bool {
+        url_has_playlist_param(self.downloader_url.trim())
+    }
+
     pub fn downloader_option_focus_index(&self) -> Option<usize> {
+        let option_count = self.downloader_option_count();
         self.downloader_option_focus
-            .map(|index| index.min(DOWNLOADER_OPTION_COUNT.saturating_sub(1)))
+            .map(|index| index.min(option_count.saturating_sub(1)))
     }
 
     pub fn downloader_quality_list_focused(&self) -> bool {
@@ -219,9 +232,10 @@ impl App {
         if self.downloader_step != DownloaderStep::QualitySelect {
             return;
         }
+        let option_count = self.downloader_option_count();
         self.downloader_option_focus = match self.downloader_option_focus {
             None => Some(0),
-            Some(index) if index + 1 < DOWNLOADER_OPTION_COUNT => Some(index + 1),
+            Some(index) if index + 1 < option_count => Some(index + 1),
             Some(_) => {
                 self.downloader_quality_index = 0;
                 None
@@ -233,8 +247,9 @@ impl App {
         if self.downloader_step != DownloaderStep::QualitySelect {
             return;
         }
+        let option_count = self.downloader_option_count();
         self.downloader_option_focus = match self.downloader_option_focus {
-            None => Some(DOWNLOADER_OPTION_COUNT - 1),
+            None => Some(option_count.saturating_sub(1)),
             Some(0) => {
                 self.downloader_quality_index = 0;
                 None
@@ -252,6 +267,7 @@ impl App {
             Some(0) => self.toggle_downloader_audio_only(),
             Some(1) => self.toggle_downloader_sponsorblock(),
             Some(2) => self.toggle_downloader_subtitles(),
+            Some(3) => self.toggle_downloader_playlist(),
             _ => {}
         }
     }
@@ -314,36 +330,61 @@ impl App {
             return;
         }
 
-        let url = self.downloader_url.trim().to_string();
-        if url.is_empty() {
+        let url_input = self.downloader_url.trim().to_string();
+        if url_input.is_empty() {
             self.status_message = "Enter a URL before running Downloader.".to_string();
             return;
         }
+        let playlist_supported = url_has_playlist_param(&url_input);
+        let download_playlist = playlist_supported && self.downloader_playlist;
+        let target_url = if download_playlist {
+            url_input.clone()
+        } else {
+            normalize_downloader_target_url(&url_input)
+        };
 
         let selected_quality = self.selected_downloader_quality();
         let effective_selector = self.effective_downloader_selector(&selected_quality.selector);
-        let output_path = match resolve_downloader_output_path(
-            &self.cwd,
-            &url,
-            &effective_selector,
-            self.downloader_audio_only,
-            self.downloader_subtitles,
-        ) {
-            Ok(path) => path,
-            Err(err) => {
-                self.status_message = format!("Failed to resolve downloader output name: {err}");
-                return;
-            }
+        let mut output_args = Vec::new();
+        let output_label = if download_playlist {
+            output_args.extend([
+                "-P".to_string(),
+                self.cwd.display().to_string(),
+                "-o".to_string(),
+                "%(playlist_index)03d - %(title)s [%(id)s].%(ext)s".to_string(),
+            ]);
+            format!("{} (playlist files)", self.cwd.display())
+        } else {
+            let output_path = match resolve_downloader_output_path(
+                &self.cwd,
+                &target_url,
+                &effective_selector,
+                self.downloader_audio_only,
+                self.downloader_subtitles,
+            ) {
+                Ok(path) => path,
+                Err(err) => {
+                    self.status_message =
+                        format!("Failed to resolve downloader output name: {err}");
+                    return;
+                }
+            };
+            output_args.extend(["-o".to_string(), output_path.display().to_string()]);
+            output_path.display().to_string()
         };
 
         let mut downloader_args = vec![
             "--newline".to_string(),
+            if download_playlist {
+                "--yes-playlist".to_string()
+            } else {
+                "--no-playlist".to_string()
+            },
             "--no-overwrites".to_string(),
             "-f".to_string(),
             effective_selector.clone(),
-            "-o".to_string(),
-            output_path.display().to_string(),
         ];
+        downloader_args.extend(output_args);
         if self.downloader_audio_only {
             downloader_args.extend([
                 "-x".to_string(),
@@ -362,7 +403,7 @@ impl App {
                 "all,-live_chat".to_string(),
             ]);
         }
-        downloader_args.push(url);
+        downloader_args.push(target_url);
 
         let command_line = format!(
             "yt-dlp {}",
@@ -378,7 +419,7 @@ impl App {
                 self.status_message = format!(
                     "Running Downloader ({}) -> {}",
                     self.downloader_run_mode_label(&selected_quality.label),
-                    output_path.display()
+                    output_label
                 );
             }
             Err(err) => {
@@ -414,11 +455,12 @@ impl App {
             .running_downloader_probe
             .take()
             .map(|running| running.command_line)
-            .unwrap_or_else(|| "yt-dlp -F".to_string());
+            .unwrap_or_else(|| "yt-dlp --no-playlist -F".to_string());
 
         match result {
-            DownloaderProbeResult::Success { choices } => {
+            DownloaderProbeResult::Success { choices, title } => {
                 self.downloader_quality_choices = choices;
+                self.downloader_video_title = title;
                 self.downloader_quality_index = 0;
                 self.downloader_option_focus = Some(0);
                 self.downloader_step = DownloaderStep::QualitySelect;
@@ -448,16 +490,19 @@ impl App {
             return;
         }
 
-        let url = self.downloader_url.trim().to_string();
-        if url.is_empty() {
+        let url_input = self.downloader_url.trim().to_string();
+        if url_input.is_empty() {
             self.status_message = "Enter a URL before fetching quality options.".to_string();
             return;
         }
+        let target_url = normalize_downloader_target_url(&url_input);
 
-        let command_line = format!("yt-dlp -F {}", shell_quote(&url));
+        let command_line = format!("yt-dlp --no-playlist -F {}", shell_quote(&target_url));
         let (tx, rx) = mpsc::channel();
+        self.downloader_video_title = None;
+        self.downloader_playlist = false;
         thread::spawn(move || {
-            let result = probe_downloader_qualities(&url);
+            let result = probe_downloader_qualities(&target_url);
             let _ = tx.send(result);
         });
 
@@ -495,6 +540,21 @@ impl App {
         );
     }
 
+    fn toggle_downloader_playlist(&mut self) {
+        if !self.downloader_playlist_available() {
+            self.downloader_playlist = false;
+            self.status_message =
+                "Downloader option: playlist requires a URL with a list parameter.".to_string();
+            return;
+        }
+
+        self.downloader_playlist = !self.downloader_playlist;
+        self.status_message = format!(
+            "Downloader option: playlist {}.",
+            on_off(self.downloader_playlist)
+        );
+    }
+
     fn effective_downloader_selector(&self, selected_selector: &str) -> String {
         if self.downloader_audio_only {
             "bestaudio/best".to_string()
@@ -513,6 +573,9 @@ impl App {
         }
         if self.downloader_subtitles {
             flags.push("subtitles");
+        }
+        if self.downloader_playlist_enabled() {
+            flags.push("playlist");
         }
 
         if flags.is_empty() {
@@ -706,8 +769,14 @@ impl App {
     fn return_to_downloader_url_input(&mut self) {
         self.downloader_step = DownloaderStep::UrlInput;
         self.downloader_option_focus = None;
+        self.downloader_video_title = None;
+        self.downloader_playlist = false;
         self.downloader_url.clear();
         self.downloader_url_cursor = 0;
+    }
+
+    fn downloader_option_count(&self) -> usize {
+        DOWNLOADER_BASE_OPTION_COUNT + usize::from(self.downloader_playlist_available())
     }
 }
 
@@ -719,7 +788,11 @@ fn default_downloader_quality_choice() -> DownloaderQualityChoice {
 }
 
 fn probe_downloader_qualities(url: &str) -> DownloaderProbeResult {
-    let output = match Command::new("yt-dlp").args(["-F", url]).output() {
+    let title = probe_downloader_title(url);
+    let output = match Command::new("yt-dlp")
+        .args(["--no-playlist", "-F", url])
+        .output()
+    {
         Ok(output) => output,
         Err(err) => {
             return DownloaderProbeResult::Failed {
@@ -747,7 +820,31 @@ fn probe_downloader_qualities(url: &str) -> DownloaderProbeResult {
         choices.push(default_downloader_quality_choice());
     }
 
-    DownloaderProbeResult::Success { choices }
+    DownloaderProbeResult::Success { choices, title }
+}
+
+fn probe_downloader_title(url: &str) -> Option<String> {
+    let output = Command::new("yt-dlp")
+        .args([
+            "--no-playlist",
+            "--skip-download",
+            "--print",
+            "title",
+            "--no-warnings",
+            url,
+        ])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .next_back()
+        .map(str::to_string)
 }
 
 fn parse_quality_choices_from_format_list(output: &str) -> Vec<DownloaderQualityChoice> {
@@ -1111,6 +1208,60 @@ fn resolve_downloader_output_path(
     };
 
     Ok(next_available_output_path(&absolute_predicted))
+}
+
+fn url_has_playlist_param(url: &str) -> bool {
+    let trimmed = url.trim();
+    let Some((_, query)) = trimmed.split_once('?') else {
+        return false;
+    };
+
+    let query = query.split('#').next().unwrap_or(query);
+    query.split('&').any(|pair| {
+        let key = pair.split('=').next().unwrap_or_default();
+        key.eq_ignore_ascii_case("list")
+    })
+}
+
+fn normalize_downloader_target_url(url: &str) -> String {
+    let trimmed = url.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if !(lower.contains("youtube.com") || lower.contains("youtu.be")) {
+        return trimmed.to_string();
+    }
+    if !url_has_playlist_param(trimmed) {
+        return trimmed.to_string();
+    }
+
+    let (without_fragment, fragment) = match trimmed.split_once('#') {
+        Some((head, tail)) => (head, Some(tail)),
+        None => (trimmed, None),
+    };
+    let Some((base, query)) = without_fragment.split_once('?') else {
+        return trimmed.to_string();
+    };
+
+    let kept_params = query
+        .split('&')
+        .filter(|pair| !pair.is_empty())
+        .filter(|pair| {
+            let key = pair.split('=').next().unwrap_or_default().to_ascii_lowercase();
+            !matches!(key.as_str(), "list" | "index" | "pp")
+        })
+        .collect::<Vec<_>>();
+
+    let mut normalized = if kept_params.is_empty() {
+        base.to_string()
+    } else {
+        format!("{base}?{}", kept_params.join("&"))
+    };
+    if let Some(fragment) = fragment
+        && !fragment.is_empty()
+    {
+        normalized.push('#');
+        normalized.push_str(fragment);
+    }
+    normalized
 }
 
 fn on_off(value: bool) -> &'static str {

@@ -22,7 +22,7 @@ use super::super::{
     pane_border_style,
 };
 
-const INPUT_LABEL_COL_WIDTH: usize = 11;
+const INPUT_LABEL_COL_WIDTH: usize = 12;
 const MAX_QUALITY_ROWS: usize = 8;
 
 pub fn render_downloader_tab(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
@@ -118,8 +118,10 @@ fn render_url_step(frame: &mut Frame, app: &App, form_focused: bool, area: Rect)
 }
 
 fn render_quality_step(frame: &mut Frame, app: &App, form_focused: bool, area: Rect) {
+    let show_playlist_option = app.downloader_playlist_available();
+    let header_height = if show_playlist_option { 8 } else { 7 };
     let [header_area, list_region] =
-        Layout::vertical([Constraint::Length(7), Constraint::Min(0)]).areas(area);
+        Layout::vertical([Constraint::Length(header_height), Constraint::Min(0)]).areas(area);
     let (selected, total) = app.downloader_quality_position();
     let selector = app.downloader_selected_quality_selector();
     let pick_row = if app.downloader_audio_only_enabled() {
@@ -129,8 +131,9 @@ fn render_quality_step(frame: &mut Frame, app: &App, form_focused: bool, area: R
     };
     let option_focus = app.downloader_option_focus_index();
     let list_focused = app.downloader_quality_list_focused();
+    let title_or_url = app.downloader_video_title().unwrap_or(app.downloader_url.trim());
 
-    let header_lines = vec![
+    let mut header_lines = vec![
         Line::styled(
             "Step 2/2: Select video quality",
             Style::default()
@@ -142,9 +145,9 @@ fn render_quality_step(frame: &mut Frame, app: &App, form_focused: bool, area: R
             Style::default().fg(Color::DarkGray),
         ),
         row(
-            "URL",
+            "Title",
             truncate_middle(
-                app.downloader_url.trim(),
+                title_or_url,
                 area.width.saturating_sub(14) as usize,
             ),
         ),
@@ -165,6 +168,14 @@ fn render_quality_step(frame: &mut Frame, app: &App, form_focused: bool, area: R
             form_focused && option_focus == Some(2),
         ),
     ];
+    if show_playlist_option {
+        header_lines.push(checkbox_line_with_hint(
+            "Playlist",
+            app.downloader_playlist_enabled(),
+            form_focused && option_focus == Some(3),
+            "downloads the whole playlist",
+        ));
+    }
     frame.render_widget(Paragraph::new(header_lines), header_area);
 
     if list_region.height < 4 {
@@ -234,7 +245,7 @@ fn warning(message: &str) -> Line<'static> {
 }
 
 fn row(label: &str, value: String) -> Line<'static> {
-    const LABEL_COL_WIDTH: usize = 10;
+    const LABEL_COL_WIDTH: usize = INPUT_LABEL_COL_WIDTH;
     let label_cell = format!("{label:<LABEL_COL_WIDTH$}");
     Line::from(vec![
         Span::styled(
@@ -277,6 +288,16 @@ fn checkbox_line(label: &str, checked: bool, focused: bool) -> Line<'static> {
         Span::raw("  "),
         Span::styled(box_text.to_string(), value_style),
     ])
+}
+
+fn checkbox_line_with_hint(label: &str, checked: bool, focused: bool, hint: &str) -> Line<'static> {
+    let mut line = checkbox_line(label, checked, focused);
+    line.spans.push(Span::raw("  "));
+    line.spans.push(Span::styled(
+        hint.to_string(),
+        Style::default().fg(Color::DarkGray),
+    ));
+    line
 }
 
 fn input_line(label: &str, value: &str, active_cursor: Option<usize>) -> Line<'static> {
