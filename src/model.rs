@@ -53,13 +53,6 @@ impl RightTab {
         }
     }
 
-    pub fn previous(self) -> Self {
-        match self {
-            Self::Editor => Self::Downloader,
-            Self::Downloader => Self::Editor,
-        }
-    }
-
     pub fn number(self) -> usize {
         match self {
             Self::Editor => 1,

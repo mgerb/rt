@@ -2,7 +2,7 @@
 // - Reads/sorts directory entries and manages selection movement.
 // - Handles directory navigation and entry activation.
 // - Starts delete confirmation flow and removes files after confirmation.
-// - Populates editor defaults when a video file is selected.
+// - Populates editor defaults when an editable media file is selected.
 use std::{
     fs, io,
     path::{Path, PathBuf},
@@ -11,7 +11,7 @@ use std::{
 
 use crate::{
     media::{
-        default_output_name, is_video_file, output_format_for_path, probe_video_stats,
+        default_output_name, is_editable_media_file, output_format_for_path, probe_video_stats,
         probe_video_times,
     },
     model::{FileEntry, InputField, RightTab, TimeInput},
@@ -58,12 +58,12 @@ impl App {
             return Ok(false);
         }
 
-        if is_video_file(&entry.path) {
-            self.select_video(entry.path);
+        if is_editable_media_file(&entry.path) {
+            self.select_media(entry.path);
             return Ok(true);
         }
 
-        self.status_message = format!("Not a video file: {}", entry.name);
+        self.status_message = format!("Not a supported media file: {}", entry.name);
         Ok(false)
     }
 
@@ -190,7 +190,7 @@ impl App {
         Ok(())
     }
 
-    fn select_video(&mut self, path: PathBuf) {
+    fn select_media(&mut self, path: PathBuf) {
         self.right_tab = RightTab::Editor;
         self.output_name = default_output_name(&path);
         self.output_format = output_format_for_path(&path);
@@ -211,7 +211,7 @@ impl App {
                 self.end_time = end_time;
                 self.selected_video_bounds = Some(bounds);
                 self.status_message = format!(
-                    "Selected video: {} (range {}..={})",
+                    "Selected media: {} (range {}..={})",
                     path.display(),
                     TimeInput::from_seconds(bounds.start_seconds as f64).to_ffmpeg_timestamp(),
                     TimeInput::from_seconds(bounds.end_seconds as f64).to_ffmpeg_timestamp()
@@ -222,7 +222,7 @@ impl App {
                 self.end_time = TimeInput::zero();
                 self.selected_video_bounds = None;
                 self.status_message = format!(
-                    "Selected video (ffprobe failed, using 00:00:00): {} ({err})",
+                    "Selected media (ffprobe failed, using 00:00:00): {} ({err})",
                     path.display()
                 );
             }

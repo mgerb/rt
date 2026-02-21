@@ -195,7 +195,7 @@ impl App {
             overwrite_scale_percent_on_next_type: true,
             selected_video_stats: None,
             selected_video_bounds: None,
-            status_message: "Select a video file in the left pane.".to_string(),
+            status_message: "Select a media file in the left pane.".to_string(),
             ffmpeg_output: ToolOutput::empty(),
             downloader_url: String::new(),
             downloader_url_cursor: 0,
@@ -305,39 +305,12 @@ impl App {
         self.right_tab = self.right_tab.next();
     }
 
-    pub fn select_previous_right_tab(&mut self) {
-        self.right_tab = self.right_tab.previous();
-    }
-
     pub fn select_right_tab_by_number(&mut self, number: usize) -> bool {
         let Some(tab) = RightTab::from_number(number) else {
             return false;
         };
         self.right_tab = tab;
         true
-    }
-
-    pub fn should_treat_digit_as_editor_input(&self, focus: Focus) -> bool {
-        if focus != Focus::RightTop {
-            return false;
-        }
-
-        if self.right_tab == RightTab::Downloader {
-            return self.downloader_step == DownloaderStep::UrlInput;
-        }
-        if self.right_tab != RightTab::Editor {
-            return false;
-        }
-
-        matches!(
-            self.active_input,
-            InputField::Start
-                | InputField::End
-                | InputField::Fps
-                | InputField::Bitrate
-                | InputField::ScalePercent
-                | InputField::Output
-        )
     }
 
     pub fn can_focus_right_bottom(&self) -> bool {
