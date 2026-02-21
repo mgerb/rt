@@ -11,6 +11,7 @@ pub(crate) struct ToolOutput {
 
 impl ToolOutput {
     const PAGE_STEP: usize = 12;
+    const MAX_LINES: usize = 20_000;
 
     pub(crate) fn empty() -> Self {
         Self {
@@ -38,6 +39,7 @@ impl ToolOutput {
 
     pub(crate) fn append_line(&mut self, line: String) {
         self.lines.push(line);
+        self.trim_old_lines_if_needed();
         if self.follow_tail {
             self.scroll = self.lines.len().saturating_sub(1);
         }
@@ -73,5 +75,15 @@ impl ToolOutput {
 
     pub(crate) fn scroll(&self) -> usize {
         self.scroll
+    }
+
+    fn trim_old_lines_if_needed(&mut self) {
+        if self.lines.len() <= Self::MAX_LINES {
+            return;
+        }
+
+        let overflow = self.lines.len() - Self::MAX_LINES;
+        self.lines.drain(0..overflow);
+        self.scroll = self.scroll.saturating_sub(overflow);
     }
 }

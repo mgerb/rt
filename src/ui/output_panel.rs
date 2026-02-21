@@ -20,6 +20,9 @@ pub struct LogPanelStateView<'a> {
 }
 
 pub fn render_log_panel(frame: &mut Frame, area: Rect, panel: LogPanelStateView<'_>) {
+    const OVERSCAN_MULTIPLIER: usize = 4;
+    const MIN_WINDOW_LINES: usize = 64;
+
     let mut block = Block::default()
         .borders(Borders::ALL)
         .border_style(log_panel_border_style(panel.focused, panel.accent_color))
@@ -34,26 +37,34 @@ pub fn render_log_panel(frame: &mut Frame, area: Rect, panel: LogPanelStateView<
         return;
     }
 
-    if inner.width == 0 || inner.height == 0 {
-        return;
+    let visible_line_count = inner.height.max(1) as usize;
+    let max_scroll_top = panel.lines.len().saturating_sub(visible_line_count);
+    let scroll_top = panel.scroll.min(max_scroll_top);
+
+    // Render only a window near the current viewport to avoid O(total_lines)
+    // allocation every frame when tools stream large outputs.
+    let window_len = (visible_line_count * OVERSCAN_MULTIPLIER).max(MIN_WINDOW_LINES);
+    let half_window = window_len / 2;
+    let mut window_start = scroll_top.saturating_sub(half_window);
+    let mut window_end = (window_start + window_len).min(panel.lines.len());
+    if window_end.saturating_sub(window_start) < window_len {
+        window_start = window_end.saturating_sub(window_len);
+        window_end = (window_start + window_len).min(panel.lines.len());
     }
 
-    let lines = panel
-        .lines
+    let lines = panel.lines[window_start..window_end]
         .iter()
         .map(String::as_str)
         .map(Line::from)
         .collect::<Vec<_>>();
-    let visible_line_count = inner.height.max(1) as usize;
-    let max_scroll_top = lines.len().saturating_sub(visible_line_count);
-    let scroll_top = panel.scroll.min(max_scroll_top);
+    let relative_scroll = scroll_top.saturating_sub(window_start);
 
     let widget = Paragraph::new(lines)
         .alignment(Alignment::Left)
         .wrap(Wrap {
             trim: panel.trim_wrapped_lines,
         })
-        .scroll((scroll_top.min(u16::MAX as usize) as u16, 0));
+        .scroll((relative_scroll.min(u16::MAX as usize) as u16, 0));
 
     frame.render_widget(widget, inner);
 }
