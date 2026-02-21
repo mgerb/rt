@@ -140,8 +140,11 @@ fn render_keybinds_popup(frame: &mut Frame, app: &App) {
 
     frame.render_widget(Clear, popup);
 
+    let block = Block::default().borders(Borders::ALL).title("Keybinds");
+    let inner = block.inner(popup);
+
     let lines = vec![
-        Line::from("Press ? or Esc to close this window and focus file browser."),
+        Line::from("Press ? to close this window. Press Esc to close and focus file browser."),
         Line::from(""),
         keybind_section("GLOBAL"),
         keybind_row("?", "toggle keybinds popup"),
@@ -149,43 +152,27 @@ fn render_keybinds_popup(frame: &mut Frame, app: &App) {
         keybind_row("Ctrl+c", "quit app"),
         keybind_row("Up/Down or j/k", "scroll keybinds"),
         keybind_row("PgUp/PgDn or Ctrl+u/d", "page keybinds"),
+        keybind_row("Tab / Shift+Tab", "move through inputs"),
+        keybind_row("Space", "toggle checkbox"),
         Line::from(""),
         keybind_section("WINDOW FOCUS"),
-        keybind_row("Ctrl+h / Ctrl+Left", "focus left browser"),
-        keybind_row("Ctrl+l / Ctrl+Right", "focus right column"),
+        keybind_row("Ctrl+Left/h/Right/l/Up/k/Down/j", "focus panels"),
         keybind_row("Ctrl+o", "focus tool output"),
-        keybind_row("Ctrl+j/k or Ctrl+Up/Down", "move window focus"),
-        keybind_row("Ctrl+n", "next right tab"),
+        keybind_row("Ctrl+n", "toggle tabs"),
         Line::from(""),
         keybind_section("FILE BROWSER"),
-        keybind_row("j/k or Up/Down", "move selection"),
-        keybind_row("PgUp/PgDn or Ctrl+u/d", "page selection"),
-        keybind_row("Enter", "open dir or select media"),
+        keybind_row("Enter", "select"),
         keybind_row("h/-", "parent directory"),
         keybind_row("_", "initial directory"),
         keybind_row("x", "open selected file in system default app"),
-        keybind_row("d", "delete selected file (confirm modal)"),
+        keybind_row("d", "delete file"),
         keybind_row("r", "refresh listing"),
         Line::from(""),
         keybind_section("EDITOR PANEL"),
-        keybind_row("Tab / Shift+Tab", "move through time pieces and fields"),
-        keybind_row("Space", "toggle focused checkbox"),
-        keybind_row(
-            "Backspace",
-            "clear time piece / delete FPS/bitrate/scale/output char",
-        ),
-        keybind_row("Up/Down", "scroll editor form"),
-        keybind_row("PgUp/PgDn or Ctrl+u/d", "page editor form"),
+        keybind_row("Backspace", "back to URL step"),
         keybind_row("Enter", "run editor export"),
-        Line::from(""),
-        keybind_section("TOOL OUTPUT"),
-        keybind_row("j/k or Up/Down", "scroll output"),
-        keybind_row("Ctrl+u / Ctrl+d", "page up / page down"),
-        keybind_row("x", "cancel running tool"),
     ];
 
-    let block = Block::default().borders(Borders::ALL).title("Keybinds");
-    let inner = block.inner(popup);
     let visible_line_count = inner.height.max(1) as usize;
     let max_scroll_top = lines.len().saturating_sub(visible_line_count);
     let scroll_top = app.clamp_keybinds_scroll(max_scroll_top);
@@ -294,7 +281,7 @@ fn keybind_section(title: &str) -> Line<'static> {
 }
 
 fn keybind_row(keys: &str, action: &str) -> Line<'static> {
-    const KEY_COL_WIDTH: usize = 24;
+    const KEY_COL_WIDTH: usize = 32;
     let keys_padded = format!("{keys:<KEY_COL_WIDTH$}");
     Line::from(vec![
         Span::styled(
