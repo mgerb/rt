@@ -12,6 +12,7 @@ use ratatui::{
 
 use crate::{
     app::App,
+    media::scaled_resolution_for_percent,
     model::{Focus, InputField, TimeInput},
 };
 
@@ -56,9 +57,13 @@ fn render_trim_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
         let format_active = focus == Focus::RightTop && app.active_input == InputField::Format;
         let fps_active_cursor = (focus == Focus::RightTop && app.active_input == InputField::Fps)
             .then_some(app.output_fps_cursor);
-        let bitrate_active_cursor = (focus == Focus::RightTop
+        let bitrate_active_cursor = (app.bitrate_enabled()
+            && focus == Focus::RightTop
             && app.active_input == InputField::Bitrate)
             .then_some(app.output_bitrate_cursor);
+        let scale_percent_active_cursor = (focus == Focus::RightTop
+            && app.active_input == InputField::ScalePercent)
+            .then_some(app.output_scale_percent_cursor);
         let remove_audio_active =
             focus == Focus::RightTop && app.active_input == InputField::RemoveAudio;
         let output_active_cursor = (focus == Focus::RightTop
@@ -109,11 +114,22 @@ fn render_trim_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
             format_active,
         ));
         lines.push(input_line("FPS", &app.output_fps, fps_active_cursor));
+        if app.bitrate_enabled() {
+            lines.push(input_line(
+                "Bitrate",
+                &app.output_bitrate_kbps,
+                bitrate_active_cursor,
+            ));
+        } else {
+            lines.push(disabled_input_line("Bitrate", "n/a for GIF"));
+        }
+        lines.push(input_hint_line("Scale %", "100 keeps original"));
         lines.push(input_line(
-            "Bitrate",
-            &app.output_bitrate_kbps,
-            bitrate_active_cursor,
+            "Scale %",
+            &app.output_scale_percent,
+            scale_percent_active_cursor,
         ));
+        lines.push(trim_row("Scaled", preview_scaled_resolution(app)));
         lines.push(checkbox_input_line(
             "Remove audio",
             app.remove_audio,
@@ -272,6 +288,20 @@ fn choice_input_line(label: &str, value: &str, active: bool) -> Line<'static> {
     ])
 }
 
+fn disabled_input_line(label: &str, value: &str) -> Line<'static> {
+    let label_cell = format!("{label:<INPUT_LABEL_COL_WIDTH$}");
+    Line::from(vec![
+        Span::styled(
+            label_cell,
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("  "),
+        Span::styled(value.to_string(), Style::default().fg(Color::DarkGray)),
+    ])
+}
+
 fn checkbox_input_line(label: &str, checked: bool, active: bool) -> Line<'static> {
     let label_cell = format!("{label:<INPUT_LABEL_COL_WIDTH$}");
     let mark = if checked { "[x]" } else { "[ ]" };
@@ -358,4 +388,29 @@ fn truncate_tail(value: &str, max_chars: usize) -> String {
         .skip(char_count.saturating_sub(keep))
         .collect::<String>();
     format!("…{tail}")
+}
+
+fn preview_scaled_resolution(app: &App) -> String {
+    let Some(stats) = app.selected_video_stats.as_ref() else {
+        return "n/a".to_string();
+    };
+    let (Some(width), Some(height)) = (stats.width, stats.height) else {
+        return "n/a".to_string();
+    };
+    let Some(percent) = parse_scale_percent_for_preview(&app.output_scale_percent) else {
+        return "invalid (1-100%)".to_string();
+    };
+    let (scaled_width, scaled_height) = scaled_resolution_for_percent(width, height, percent);
+    format!("{scaled_width}x{scaled_height} ({percent}%)")
+}
+
+fn parse_scale_percent_for_preview(value: &str) -> Option<u32> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Some(100);
+    }
+    trimmed
+        .parse::<u32>()
+        .ok()
+        .filter(|value| *value >= 1 && *value <= 100)
 }

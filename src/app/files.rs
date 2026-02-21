@@ -6,6 +6,7 @@
 use std::{
     fs, io,
     path::{Path, PathBuf},
+    process::{Command, Stdio},
 };
 
 use crate::{
@@ -13,7 +14,7 @@ use crate::{
         default_output_name, is_video_file, output_format_for_path, probe_video_stats,
         probe_video_times,
     },
-    model::{FileEntry, InputField, TimeInput},
+    model::{FileEntry, InputField, RightTab, TimeInput},
 };
 
 use super::{App, PendingDelete, trim::default_output_fps};
@@ -81,6 +82,27 @@ impl App {
             name: entry.name,
             path: entry.path,
         });
+    }
+
+    pub fn open_selected_with_system_default(&mut self) {
+        let Some(entry) = self.selected_entry().cloned() else {
+            self.status_message = "No entry selected.".to_string();
+            return;
+        };
+
+        if entry.is_dir {
+            self.status_message = "Use Enter to open directories in the browser.".to_string();
+            return;
+        }
+
+        match open_with_system_default(&entry.path) {
+            Ok(()) => {
+                self.status_message = format!("Opened with system default: {}", entry.name);
+            }
+            Err(err) => {
+                self.status_message = format!("Failed to open {}: {err}", entry.name);
+            }
+        }
     }
 
     pub fn cancel_pending_delete(&mut self) {
@@ -164,6 +186,7 @@ impl App {
     }
 
     fn select_video(&mut self, path: PathBuf) {
+        self.right_tab = RightTab::Trim;
         self.output_name = default_output_name(&path);
         self.output_format = output_format_for_path(&path);
         self.selected_video_stats = probe_video_stats(&path).ok();
@@ -171,6 +194,9 @@ impl App {
         self.output_fps_cursor = self.output_fps.chars().count();
         self.output_bitrate_kbps = default_output_bitrate_kbps(self.selected_video_stats.as_ref());
         self.output_bitrate_cursor = self.output_bitrate_kbps.chars().count();
+        self.output_scale_percent = "100".to_string();
+        self.output_scale_percent_cursor = self.output_scale_percent.chars().count();
+        self.use_gpu_encoding = self.gpu_h264_encoder_available();
         self.remove_audio = false;
         self.sync_output_name_to_available_for_path(&path);
 
@@ -202,7 +228,11 @@ impl App {
         self.end_part = 0;
         self.output_fps_cursor = self.output_fps.chars().count();
         self.output_bitrate_cursor = self.output_bitrate_kbps.chars().count();
+        self.output_scale_percent_cursor = self.output_scale_percent.chars().count();
         self.output_cursor = self.output_name.chars().count();
+        self.overwrite_fps_on_next_type = true;
+        self.overwrite_bitrate_on_next_type = true;
+        self.overwrite_scale_percent_on_next_type = true;
         self.selected_video = Some(path);
     }
 
@@ -222,6 +252,8 @@ impl App {
             self.start_time = TimeInput::zero();
             self.end_time = TimeInput::zero();
             self.output_name.clear();
+            self.output_scale_percent = "100".to_string();
+            self.output_scale_percent_cursor = self.output_scale_percent.chars().count();
             self.output_cursor = 0;
         }
     }
@@ -234,8 +266,18 @@ pub(super) fn read_entries(dir: &Path) -> io::Result<Vec<FileEntry>> {
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().into_owned();
             let is_dir = entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
+            let size_bytes = if is_dir {
+                None
+            } else {
+                entry.metadata().ok().map(|meta| meta.len())
+            };
 
-            FileEntry { name, path, is_dir }
+            FileEntry {
+                name,
+                path,
+                is_dir,
+                size_bytes,
+            }
         })
         .collect::<Vec<_>>();
 
@@ -248,4 +290,43 @@ fn default_output_bitrate_kbps(stats: Option<&crate::media::VideoStats>) -> Stri
         .and_then(|stats| stats.bitrate_kbps)
         .map(|bitrate| bitrate.to_string())
         .unwrap_or_else(|| "8000".to_string())
+}
+
+fn open_with_system_default(path: &Path) -> io::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .arg(path)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("cmd")
+            .args(["/C", "start", ""])
+            .arg(path)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()?;
+        return Ok(());
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        Command::new("xdg-open")
+            .arg(path)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()?;
+        return Ok(());
+    }
+
+    #[allow(unreachable_code)]
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "opening files is not supported on this platform",
+    ))
 }

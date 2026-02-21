@@ -17,6 +17,8 @@ pub const OUTPUT_FORMATS: [&str; 4] = ["mp4", "mov", "mkv", "gif"];
 pub struct VideoStats {
     pub duration: String,
     pub resolution: String,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
     pub fps: String,
     pub video_codec: String,
     pub audio_codec: String,
@@ -202,7 +204,13 @@ pub fn probe_video_stats(path: &Path) -> io::Result<VideoStats> {
         .get("codec_name")
         .cloned()
         .unwrap_or_else(|| "n/a".to_string());
-    let resolution = match (stats_map.get("width"), stats_map.get("height")) {
+    let width = stats_map
+        .get("width")
+        .and_then(|value| value.parse::<u32>().ok());
+    let height = stats_map
+        .get("height")
+        .and_then(|value| value.parse::<u32>().ok());
+    let resolution = match (width, height) {
         (Some(width), Some(height)) => format!("{width}x{height}"),
         _ => "n/a".to_string(),
     };
@@ -234,6 +242,8 @@ pub fn probe_video_stats(path: &Path) -> io::Result<VideoStats> {
     Ok(VideoStats {
         duration,
         resolution,
+        width,
+        height,
         fps,
         video_codec,
         audio_codec,
@@ -241,6 +251,17 @@ pub fn probe_video_stats(path: &Path) -> io::Result<VideoStats> {
         bitrate,
         bitrate_kbps,
     })
+}
+
+pub fn scaled_resolution_for_percent(width: u32, height: u32, percent: u32) -> (u32, u32) {
+    if percent == 100 {
+        return (width, height);
+    }
+
+    (
+        scaled_dimension_for_percent(width, percent),
+        scaled_dimension_for_percent(height, percent),
+    )
 }
 
 pub fn summarize_ffmpeg_error(stderr: &str) -> String {
@@ -368,6 +389,20 @@ fn format_bitrate(bits_per_second: u64) -> String {
     } else {
         format!("{bits_per_second} bps")
     }
+}
+
+fn scaled_dimension_for_percent(dimension: u32, percent: u32) -> u32 {
+    let mut scaled = ((dimension as u64 * percent as u64) + 50) / 100;
+    if scaled < 2 {
+        scaled = 2;
+    }
+    let mut scaled = scaled as u32;
+
+    if scaled % 2 == 1 {
+        scaled = scaled.saturating_sub(1);
+    }
+
+    scaled.max(2)
 }
 
 fn bitrate_kbps_from_bits_per_second(bits_per_second: u64) -> Option<u32> {

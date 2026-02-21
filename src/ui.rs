@@ -75,18 +75,13 @@ fn render_right_tabs(frame: &mut Frame, app: &App, focus: Focus, area: ratatui::
 }
 
 fn render_files_pane(frame: &mut Frame, app: &App, focus: Focus, area: ratatui::layout::Rect) {
+    // Account for borders and highlight symbol so selected rows stay aligned.
+    let content_width = area.width.saturating_sub(4) as usize;
     let file_items = app
         .entries
         .iter()
         .map(|entry| {
-            let prefix = if entry.is_dir {
-                "[D] "
-            } else if is_video_file(&entry.path) {
-                "[V] "
-            } else {
-                "[F] "
-            };
-            let line = format!("{prefix}{}", entry.name);
+            let line = format_file_row(entry, content_width);
             if is_video_file(&entry.path) {
                 ListItem::new(Line::styled(line, Style::default().fg(Color::LightGreen)))
             } else {
@@ -143,6 +138,7 @@ fn render_keybinds_popup(frame: &mut Frame) {
         keybind_row("Enter", "open dir or select video"),
         keybind_row("h/-", "parent directory"),
         keybind_row("_", "initial directory"),
+        keybind_row("x", "open selected file in system default app"),
         keybind_row("d", "delete selected file (confirm modal)"),
         keybind_row("r", "refresh listing"),
         Line::from(""),
@@ -151,7 +147,7 @@ fn render_keybinds_popup(frame: &mut Frame) {
         keybind_row("Space", "toggle remove-audio checkbox"),
         keybind_row(
             "Backspace",
-            "clear time piece / delete FPS/bitrate/output char",
+            "clear time piece / delete FPS/bitrate/scale/output char",
         ),
         keybind_row("Enter", "run ffmpeg trim"),
         Line::from(""),
@@ -252,5 +248,96 @@ pub(super) fn pane_border_style(is_focused: bool, focused_color: Color) -> Style
             .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(Color::DarkGray)
+    }
+}
+
+fn file_size_label(entry: &crate::model::FileEntry) -> String {
+    if entry.is_dir {
+        "<DIR>".to_string()
+    } else if let Some(bytes) = entry.size_bytes {
+        format_size(bytes)
+    } else {
+        "?".to_string()
+    }
+}
+
+fn format_file_row(entry: &crate::model::FileEntry, content_width: usize) -> String {
+    let prefix = format!("{} ", file_type_icon(entry));
+    let size = file_size_label(entry);
+    let prefix_len = prefix.chars().count();
+    let size_len = size.chars().count();
+
+    let available_name_width = content_width.saturating_sub(prefix_len + size_len + 1);
+    let name = truncate_middle_with_ellipsis(&entry.name, available_name_width);
+    let left = format!("{prefix}{name}");
+    let left_len = left.chars().count();
+    let spaces = content_width.saturating_sub(left_len + size_len).max(1);
+
+    format!("{left}{}{}", " ".repeat(spaces), size)
+}
+
+fn file_type_icon(entry: &crate::model::FileEntry) -> &'static str {
+    if entry.is_dir {
+        return "";
+    }
+
+    let ext = entry
+        .path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase());
+
+    match ext.as_deref() {
+        Some("mp4" | "mov" | "mkv" | "avi" | "webm" | "m4v" | "mpeg" | "mpg" | "wmv" | "flv") => {
+            ""
+        }
+        Some("mp3" | "wav" | "flac" | "aac" | "ogg" | "m4a") => "",
+        Some("png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg") => "",
+        Some("zip" | "tar" | "gz" | "bz2" | "xz" | "7z" | "rar") => "",
+        Some("pdf") => "",
+        Some("md" | "txt" | "rtf") => "",
+        Some("rs" | "toml" | "json" | "yaml" | "yml" | "ts" | "js" | "py" | "go" | "java") => "󰈙",
+        _ => "",
+    }
+}
+
+fn truncate_middle_with_ellipsis(value: &str, max_chars: usize) -> String {
+    let char_count = value.chars().count();
+    if char_count <= max_chars {
+        return value.to_string();
+    }
+    if max_chars == 0 {
+        return String::new();
+    }
+    if max_chars <= 3 {
+        return ".".repeat(max_chars);
+    }
+
+    let keep_total = max_chars - 3;
+    let keep_left = keep_total / 2;
+    let keep_right = keep_total - keep_left;
+    let left = value.chars().take(keep_left).collect::<String>();
+    let right = value
+        .chars()
+        .skip(char_count.saturating_sub(keep_right))
+        .collect::<String>();
+
+    format!("{left}...{right}")
+}
+
+fn format_size(bytes: u64) -> String {
+    const KB: f64 = 1024.0;
+    const MB: f64 = KB * 1024.0;
+    const GB: f64 = MB * 1024.0;
+    let bytes_f = bytes as f64;
+
+    if bytes_f >= GB {
+        format!("{:.1}G", bytes_f / GB)
+    } else if bytes_f >= MB {
+        format!("{:.1}M", bytes_f / MB)
+    } else if bytes_f >= KB {
+        format!("{:.1}K", bytes_f / KB)
+    } else {
+        format!("{bytes}B")
     }
 }

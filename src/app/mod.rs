@@ -32,6 +32,8 @@ pub struct App {
     pub(crate) output_format: &'static str,
     pub(crate) output_fps: String,
     pub(crate) output_bitrate_kbps: String,
+    pub(crate) output_scale_percent: String,
+    use_gpu_encoding: bool,
     pub(crate) remove_audio: bool,
     pub(crate) output_name: String,
     pub(crate) active_input: InputField,
@@ -39,13 +41,18 @@ pub struct App {
     pub(crate) end_part: usize,
     pub(crate) output_fps_cursor: usize,
     pub(crate) output_bitrate_cursor: usize,
+    pub(crate) output_scale_percent_cursor: usize,
     pub(crate) output_cursor: usize,
+    pub(crate) overwrite_fps_on_next_type: bool,
+    pub(crate) overwrite_bitrate_on_next_type: bool,
+    pub(crate) overwrite_scale_percent_on_next_type: bool,
     pub(crate) selected_video_stats: Option<VideoStats>,
     selected_video_bounds: Option<VideoBounds>,
     pub(crate) status_message: String,
     pub(crate) ffmpeg_output: Vec<String>,
     pub(crate) ffmpeg_scroll: usize,
     ffmpeg_available: bool,
+    gpu_h264_encoder_available: bool,
     pub(crate) show_keybinds: bool,
     pub(crate) ffmpeg_spinner_frame: usize,
     pub(crate) right_tab: RightTab,
@@ -84,6 +91,12 @@ impl App {
     pub fn new(start_dir: Option<PathBuf>) -> io::Result<Self> {
         let cwd = resolve_start_dir(start_dir)?;
         let entries = read_entries(&cwd)?;
+        let ffmpeg_available = detect_ffmpeg_available();
+        let gpu_h264_encoder_available = if ffmpeg_available {
+            detect_ffmpeg_encoder_available("h264_nvenc")
+        } else {
+            false
+        };
 
         Ok(Self {
             cwd: cwd.clone(),
@@ -96,6 +109,8 @@ impl App {
             output_format: OUTPUT_FORMATS[0],
             output_fps: "30".to_string(),
             output_bitrate_kbps: "8000".to_string(),
+            output_scale_percent: "100".to_string(),
+            use_gpu_encoding: gpu_h264_encoder_available,
             remove_audio: false,
             output_name: String::new(),
             active_input: InputField::Start,
@@ -103,13 +118,18 @@ impl App {
             end_part: 0,
             output_fps_cursor: 0,
             output_bitrate_cursor: 0,
+            output_scale_percent_cursor: 3,
             output_cursor: 0,
+            overwrite_fps_on_next_type: true,
+            overwrite_bitrate_on_next_type: true,
+            overwrite_scale_percent_on_next_type: true,
             selected_video_stats: None,
             selected_video_bounds: None,
             status_message: "Select a video file in the left pane.".to_string(),
             ffmpeg_output: vec!["ffmpeg output will appear here after trimming.".to_string()],
             ffmpeg_scroll: 0,
-            ffmpeg_available: detect_ffmpeg_available(),
+            ffmpeg_available,
+            gpu_h264_encoder_available,
             show_keybinds: false,
             ffmpeg_spinner_frame: 0,
             right_tab: RightTab::Trim,
@@ -148,8 +168,20 @@ impl App {
         self.ffmpeg_available
     }
 
+    pub fn gpu_h264_encoder_available(&self) -> bool {
+        self.gpu_h264_encoder_available
+    }
+
     pub fn right_tab(&self) -> RightTab {
         self.right_tab
+    }
+
+    pub fn is_gif_output(&self) -> bool {
+        self.output_format == "gif"
+    }
+
+    pub fn bitrate_enabled(&self) -> bool {
+        !self.is_gif_output()
     }
 
     pub fn select_next_right_tab(&mut self) {
@@ -179,6 +211,7 @@ impl App {
                 | InputField::End
                 | InputField::Fps
                 | InputField::Bitrate
+                | InputField::ScalePercent
                 | InputField::Output
         )
     }
@@ -267,4 +300,23 @@ fn detect_ffmpeg_available() -> bool {
         .status()
         .map(|status| status.success())
         .unwrap_or(false)
+}
+
+fn detect_ffmpeg_encoder_available(encoder_name: &str) -> bool {
+    let Ok(output) = Command::new("ffmpeg")
+        .args(["-hide_banner", "-encoders"])
+        .output()
+    else {
+        return false;
+    };
+
+    if !output.status.success() {
+        return false;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout
+        .lines()
+        .map(str::trim)
+        .any(|line| line.split_whitespace().any(|word| word == encoder_name))
 }

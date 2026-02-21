@@ -4,7 +4,8 @@
 // - Starts ffmpeg jobs and reports launch/validation errors back to the UI.
 use crate::{
     media::{
-        enforce_output_extension, next_available_output_path, resolve_output_path, shell_quote,
+        enforce_output_extension, next_available_output_path, resolve_output_path,
+        scaled_resolution_for_percent, shell_quote,
     },
     model::TimeInput,
 };
@@ -80,9 +81,20 @@ impl App {
             self.status_message = "FPS must be a number greater than 0.".to_string();
             return;
         };
-        let output_bitrate = self.output_bitrate_kbps.trim().to_string();
-        let Some(parsed_output_bitrate_kbps) = parse_output_bitrate_kbps(&output_bitrate) else {
-            self.status_message = "Bitrate must be a whole number greater than 0.".to_string();
+        let parsed_output_bitrate_kbps = if self.bitrate_enabled() {
+            let output_bitrate = self.output_bitrate_kbps.trim().to_string();
+            let Some(parsed_output_bitrate_kbps) = parse_output_bitrate_kbps(&output_bitrate)
+            else {
+                self.status_message = "Bitrate must be a whole number greater than 0.".to_string();
+                return;
+            };
+            Some(parsed_output_bitrate_kbps)
+        } else {
+            None
+        };
+        let Some(scale_percent) = parse_output_scale_percent(&self.output_scale_percent) else {
+            self.status_message =
+                "Scale percent must be a whole number between 1 and 100.".to_string();
             return;
         };
 
@@ -112,25 +124,50 @@ impl App {
             "-avoid_negative_ts".to_string(),
             "make_zero".to_string(),
         ];
+        let mut filters = Vec::new();
+        if scale_percent != 100 {
+            let scale_filter = if let Some(stats) = self.selected_video_stats.as_ref() {
+                if let (Some(width), Some(height)) = (stats.width, stats.height) {
+                    let (scaled_width, scaled_height) =
+                        scaled_resolution_for_percent(width, height, scale_percent);
+                    format!("scale={scaled_width}:{scaled_height}")
+                } else {
+                    format!(
+                        "scale=trunc(iw*{scale_percent}/100/2)*2:trunc(ih*{scale_percent}/100/2)*2"
+                    )
+                }
+            } else {
+                format!("scale=trunc(iw*{scale_percent}/100/2)*2:trunc(ih*{scale_percent}/100/2)*2")
+            };
+            filters.push(scale_filter);
+        }
 
         if self.output_format == "gif" {
+            filters.push(format!("fps={parsed_output_fps}"));
             ffmpeg_args.extend([
                 "-map".to_string(),
                 "0:v:0?".to_string(),
                 "-an".to_string(),
-                "-vf".to_string(),
-                format!("fps={parsed_output_fps}"),
                 "-loop".to_string(),
                 "0".to_string(),
             ]);
         } else {
+            let Some(parsed_output_bitrate_kbps) = parsed_output_bitrate_kbps else {
+                self.status_message = "Bitrate must be a whole number greater than 0.".to_string();
+                return;
+            };
+            let (video_encoder, preset) = if self.use_gpu_encoding {
+                ("h264_nvenc", "p4")
+            } else {
+                ("libx264", "veryfast")
+            };
             ffmpeg_args.extend([
                 "-map".to_string(),
                 "0:v:0?".to_string(),
                 "-c:v".to_string(),
-                "libx264".to_string(),
+                video_encoder.to_string(),
                 "-preset".to_string(),
-                "veryfast".to_string(),
+                preset.to_string(),
                 "-b:v".to_string(),
                 format!("{parsed_output_bitrate_kbps}k"),
                 "-pix_fmt".to_string(),
@@ -151,6 +188,9 @@ impl App {
                 ]);
             }
             ffmpeg_args.extend(["-movflags".to_string(), "+faststart".to_string()]);
+        }
+        if !filters.is_empty() {
+            ffmpeg_args.extend(["-vf".to_string(), filters.join(",")]);
         }
 
         ffmpeg_args.push(output_path.display().to_string());
@@ -230,4 +270,16 @@ fn parse_output_bitrate_kbps(value: &str) -> Option<u32> {
     }
 
     trimmed.parse::<u32>().ok().filter(|bitrate| *bitrate > 0)
+}
+
+fn parse_output_scale_percent(value: &str) -> Option<u32> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Some(100);
+    }
+
+    trimmed
+        .parse::<u32>()
+        .ok()
+        .filter(|value| *value >= 1 && *value <= 100)
 }
