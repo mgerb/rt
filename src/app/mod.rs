@@ -1,12 +1,12 @@
 // Central application state shared by the app submodules.
-// - Stores file-browser state, trim form inputs, tab/focus state, and output logs.
+// - Stores file-browser state, editor form inputs, tab/focus state, and output logs.
 // - Owns background ffmpeg job state and process communication handles.
 // - Exposes cross-cutting helpers used by event handling and rendering code.
 mod ffmpeg;
 mod files;
 mod input;
 mod tool_output;
-mod trim;
+mod editor;
 mod yt_dlp;
 
 use std::{
@@ -64,7 +64,7 @@ pub struct App {
     pub(crate) yt_dlp_spinner_frame: usize,
     pub(crate) right_tab: RightTab,
     pending_delete: Option<PendingDelete>,
-    running_trim: Option<RunningTrim>,
+    running_editor: Option<RunningEditor>,
     running_yt_dlp: Option<RunningYtDlp>,
 }
 
@@ -73,7 +73,7 @@ struct PendingDelete {
     path: PathBuf,
 }
 
-struct RunningTrim {
+struct RunningEditor {
     child: Child,
     rx: Receiver<FfmpegEvent>,
     command_line: String,
@@ -157,7 +157,7 @@ impl App {
             selected_video_bounds: None,
             status_message: "Select a video file in the left pane.".to_string(),
             ffmpeg_output: ToolOutput::with_placeholder(
-                "ffmpeg output will appear here after trimming.",
+                "ffmpeg output will appear here after export.",
             ),
             yt_dlp_url: String::new(),
             yt_dlp_url_cursor: 0,
@@ -170,9 +170,9 @@ impl App {
             show_keybinds: false,
             ffmpeg_spinner_frame: 0,
             yt_dlp_spinner_frame: 0,
-            right_tab: RightTab::Trim,
+            right_tab: RightTab::Editor,
             pending_delete: None,
-            running_trim: None,
+            running_editor: None,
             running_yt_dlp: None,
         })
     }
@@ -186,10 +186,10 @@ impl App {
     }
 
     pub fn tick(&mut self) {
-        if self.running_trim.is_some() {
+        if self.running_editor.is_some() {
             self.ffmpeg_spinner_frame = (self.ffmpeg_spinner_frame + 1) % spinner_frames().len();
-            self.pump_running_trim_events();
-            self.try_finish_running_trim();
+            self.pump_running_editor_events();
+            self.try_finish_running_editor();
         }
 
         if self.running_yt_dlp.is_some() {
@@ -271,7 +271,7 @@ impl App {
         true
     }
 
-    pub fn should_treat_digit_as_trim_input(&self, focus: Focus) -> bool {
+    pub fn should_treat_digit_as_editor_input(&self, focus: Focus) -> bool {
         if focus != Focus::RightTop {
             return false;
         }
@@ -279,7 +279,7 @@ impl App {
         if self.right_tab == RightTab::YtDlp {
             return true;
         }
-        if self.right_tab != RightTab::Trim {
+        if self.right_tab != RightTab::Editor {
             return false;
         }
 
@@ -295,7 +295,7 @@ impl App {
     }
 
     pub fn can_focus_right_bottom(&self) -> bool {
-        matches!(self.right_tab, RightTab::Trim | RightTab::YtDlp)
+        matches!(self.right_tab, RightTab::Editor | RightTab::YtDlp)
     }
 
     pub fn normalize_focus(&self, focus: &mut Focus) {

@@ -98,12 +98,12 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                         KeyCode::Char('k') => focus = app.previous_focus(focus),
                         KeyCode::Char('u') if focus == Focus::RightBottom => match app.right_tab()
                         {
-                            RightTab::Trim => app.page_ffmpeg_output_up(),
+                            RightTab::Editor => app.page_ffmpeg_output_up(),
                             RightTab::YtDlp => app.page_yt_dlp_output_up(),
                         },
                         KeyCode::Char('d') | KeyCode::Char('p') if focus == Focus::RightBottom => {
                             match app.right_tab() {
-                                RightTab::Trim => app.page_ffmpeg_output_down(),
+                                RightTab::Editor => app.page_ffmpeg_output_down(),
                                 RightTab::YtDlp => app.page_yt_dlp_output_down(),
                             }
                         }
@@ -118,7 +118,7 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                 }
 
                 if let Some(tab_number) = tab_number_shortcut(key.code, key.modifiers)
-                    && !app.should_treat_digit_as_trim_input(focus)
+                    && !app.should_treat_digit_as_editor_input(focus)
                     && app.select_right_tab_by_number(tab_number)
                 {
                     focus = Focus::RightTop;
@@ -143,7 +143,7 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                         _ => {}
                     },
                     Focus::RightTop => match app.right_tab() {
-                        RightTab::Trim => match key.code {
+                        RightTab::Editor => match key.code {
                             KeyCode::Tab => app.next_input(),
                             KeyCode::BackTab => app.previous_input(),
                             KeyCode::Right => app.move_cursor_right(),
@@ -154,7 +154,7 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                             KeyCode::Char('l') if app.active_input == InputField::Format => {
                                 app.move_cursor_right()
                             }
-                            KeyCode::Enter => app.trim_selected_video(),
+                            KeyCode::Enter => app.run_editor_export(),
                             KeyCode::Backspace => app.backspace_active_input(),
                             KeyCode::Char(ch) => app.push_active_input_char(ch),
                             _ => {}
@@ -169,7 +169,7 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                         },
                     },
                     Focus::RightBottom => match app.right_tab() {
-                        RightTab::Trim => match key.code {
+                        RightTab::Editor => match key.code {
                             KeyCode::Down | KeyCode::Char('j') => app.scroll_ffmpeg_output_down(),
                             KeyCode::Up | KeyCode::Char('k') => app.scroll_ffmpeg_output_up(),
                             _ => {}
@@ -198,7 +198,7 @@ fn handle_paste_event(app: &mut App, focus: Focus, text: &str) {
                 app.push_yt_dlp_url_char(ch);
             }
         }
-        RightTab::Trim => {
+        RightTab::Editor => {
             if app.active_input == InputField::Output {
                 for ch in sanitized {
                     app.push_active_input_char(ch);
@@ -215,7 +215,7 @@ fn is_text_input_focus(app: &App, focus: Focus) -> bool {
 
     match app.right_tab() {
         RightTab::YtDlp => true,
-        RightTab::Trim => app.active_input == InputField::Output,
+        RightTab::Editor => app.active_input == InputField::Output,
     }
 }
 

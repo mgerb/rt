@@ -2,7 +2,7 @@
 // - Reads/sorts directory entries and manages selection movement.
 // - Handles directory navigation and entry activation.
 // - Starts delete confirmation flow and removes files after confirmation.
-// - Populates trim defaults when a video file is selected.
+// - Populates editor defaults when a video file is selected.
 use std::{
     fs, io,
     path::{Path, PathBuf},
@@ -17,7 +17,7 @@ use crate::{
     model::{FileEntry, InputField, RightTab, TimeInput},
 };
 
-use super::{App, PendingDelete, trim::default_output_fps};
+use super::{App, PendingDelete, editor::default_output_fps};
 
 impl App {
     pub fn next(&mut self) {
@@ -191,7 +191,7 @@ impl App {
     }
 
     fn select_video(&mut self, path: PathBuf) {
-        self.right_tab = RightTab::Trim;
+        self.right_tab = RightTab::Editor;
         self.output_name = default_output_name(&path);
         self.output_format = output_format_for_path(&path);
         self.selected_video_stats = probe_video_stats(&path).ok();
