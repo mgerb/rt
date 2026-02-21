@@ -29,6 +29,7 @@ pub struct App {
     pub(crate) cwd: PathBuf,
     initial_dir: PathBuf,
     pub(crate) entries: Vec<FileEntry>,
+    file_browser_visible_rows: Cell<usize>,
     pub(crate) selected: usize,
     pub(crate) selected_video: Option<PathBuf>,
     pub(crate) start_time: TimeInput,
@@ -54,6 +55,7 @@ pub struct App {
     selected_video_bounds: Option<VideoBounds>,
     pub(crate) status_message: String,
     pub(crate) editor_form_scroll: Cell<usize>,
+    editor_last_focus_line: Cell<Option<usize>>,
     pub(crate) ffmpeg_output: ToolOutput,
     pub(crate) downloader_url: String,
     pub(crate) downloader_video_title: Option<String>,
@@ -178,6 +180,7 @@ impl App {
             cwd: cwd.clone(),
             initial_dir: cwd,
             entries,
+            file_browser_visible_rows: Cell::new(1),
             selected: 0,
             selected_video: None,
             start_time: TimeInput::zero(),
@@ -203,6 +206,7 @@ impl App {
             selected_video_bounds: None,
             status_message: "Select a media file in the left pane.".to_string(),
             editor_form_scroll: Cell::new(0),
+            editor_last_focus_line: Cell::new(None),
             ffmpeg_output: ToolOutput::empty(),
             downloader_url: String::new(),
             downloader_video_title: None,
@@ -297,6 +301,17 @@ impl App {
         }
     }
 
+    pub fn set_file_browser_visible_rows(&self, rows: usize) {
+        self.file_browser_visible_rows.set(rows.max(1));
+    }
+
+    pub fn file_browser_page_step(&self) -> usize {
+        self.file_browser_visible_rows
+            .get()
+            .saturating_sub(1)
+            .max(1)
+    }
+
     pub fn ffmpeg_available(&self) -> bool {
         self.ffmpeg_available
     }
@@ -313,6 +328,19 @@ impl App {
         let clamped = self.editor_form_scroll().min(max_scroll_top);
         self.editor_form_scroll.set(clamped);
         clamped
+    }
+
+    pub fn set_editor_form_scroll(&self, scroll_top: usize) {
+        self.editor_form_scroll.set(scroll_top);
+    }
+
+    pub fn editor_focus_line_changed(&self, focused_line: Option<usize>) -> bool {
+        let previous = self.editor_last_focus_line.get();
+        if previous == focused_line {
+            return false;
+        }
+        self.editor_last_focus_line.set(focused_line);
+        true
     }
 
     pub fn clamped_ffmpeg_output_scroll(&self, visible_line_count: usize) -> usize {

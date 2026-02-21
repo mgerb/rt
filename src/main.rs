@@ -118,14 +118,19 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
 
                 if key.modifiers.contains(KeyModifiers::CONTROL) {
                     match key.code {
-                        KeyCode::Char('h') => focus = Focus::Left,
+                        KeyCode::Char('h') | KeyCode::Left => focus = Focus::Left,
                         KeyCode::Char('l') => {
                             if focus == Focus::Left {
                                 focus = Focus::RightTop;
                             }
                         }
-                        KeyCode::Char('j') => focus = app.next_focus(focus),
-                        KeyCode::Char('k') => focus = app.previous_focus(focus),
+                        KeyCode::Right => {
+                            if focus == Focus::Left {
+                                focus = Focus::RightTop;
+                            }
+                        }
+                        KeyCode::Char('j') | KeyCode::Down => focus = app.next_focus(focus),
+                        KeyCode::Char('k') | KeyCode::Up => focus = app.previous_focus(focus),
                         KeyCode::Char('n') => {
                             app.select_next_right_tab();
                             focus = Focus::RightTop;
@@ -134,6 +139,11 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                             if app.can_focus_right_bottom() {
                                 focus = Focus::RightBottom;
                             }
+                        }
+                        KeyCode::Char('u')
+                            if focus == Focus::Left =>
+                        {
+                            app.page_files_up();
                         }
                         KeyCode::Char('u')
                             if focus == Focus::RightTop && app.right_tab() == RightTab::Editor =>
@@ -145,6 +155,11 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                                 RightTab::Editor => app.page_ffmpeg_output_up(),
                                 RightTab::Downloader => app.page_downloader_output_up(),
                             }
+                        }
+                        KeyCode::Char('d')
+                            if focus == Focus::Left =>
+                        {
+                            app.page_files_down();
                         }
                         KeyCode::Char('d')
                             if focus == Focus::RightTop && app.right_tab() == RightTab::Editor =>
@@ -176,6 +191,8 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                         KeyCode::Char('q') => break Ok(()),
                         KeyCode::Down | KeyCode::Char('j') => app.next(),
                         KeyCode::Up | KeyCode::Char('k') => app.previous(),
+                        KeyCode::PageDown => app.page_files_down(),
+                        KeyCode::PageUp => app.page_files_up(),
                         KeyCode::Enter => {
                             if app.activate_selected_entry()? {
                                 focus = Focus::RightTop;

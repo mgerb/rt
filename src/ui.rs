@@ -98,21 +98,31 @@ fn render_files_pane(frame: &mut Frame, app: &App, focus: Focus, area: ratatui::
         })
         .collect::<Vec<_>>();
 
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(pane_border_style(focus == Focus::Left, Color::LightBlue))
+        .title_top(Line::from(format!("Files: {}", app.cwd.display())).left_aligned())
+        .title_top(Line::styled("(esc)", Style::default().fg(Color::DarkGray)).right_aligned());
+    let inner = block.inner(area);
+    let visible_rows = inner.height as usize;
+    app.set_file_browser_visible_rows(visible_rows);
+
     let mut list_state = ListState::default();
     if !app.entries.is_empty() {
-        list_state.select(Some(app.selected));
+        let selected = app.selected.min(app.entries.len().saturating_sub(1));
+        let centered_offset = if visible_rows == 0 {
+            0
+        } else {
+            let max_offset = app.entries.len().saturating_sub(visible_rows);
+            selected.saturating_sub(visible_rows / 2).min(max_offset)
+        };
+        list_state = list_state
+            .with_offset(centered_offset)
+            .with_selected(Some(selected));
     }
 
     let files = List::new(file_items)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(pane_border_style(focus == Focus::Left, Color::LightBlue))
-                .title_top(Line::from(format!("Files: {}", app.cwd.display())).left_aligned())
-                .title_top(
-                    Line::styled("(esc)", Style::default().fg(Color::DarkGray)).right_aligned(),
-                ),
-        )
+        .block(block)
         .highlight_symbol("> ")
         .highlight_style(Style::default().add_modifier(Modifier::BOLD));
 
@@ -141,14 +151,15 @@ fn render_keybinds_popup(frame: &mut Frame, app: &App) {
         keybind_row("PgUp/PgDn or Ctrl+u/d", "page keybinds"),
         Line::from(""),
         keybind_section("WINDOW FOCUS"),
-        keybind_row("Ctrl+h", "focus left browser"),
-        keybind_row("Ctrl+l", "focus right column"),
+        keybind_row("Ctrl+h / Ctrl+Left", "focus left browser"),
+        keybind_row("Ctrl+l / Ctrl+Right", "focus right column"),
         keybind_row("Ctrl+o", "focus tool output"),
-        keybind_row("Ctrl+j / Ctrl+k", "move window focus"),
+        keybind_row("Ctrl+j/k or Ctrl+Up/Down", "move window focus"),
         keybind_row("Ctrl+n", "next right tab"),
         Line::from(""),
         keybind_section("FILE BROWSER"),
         keybind_row("j/k or Up/Down", "move selection"),
+        keybind_row("PgUp/PgDn or Ctrl+u/d", "page selection"),
         keybind_row("Enter", "open dir or select media"),
         keybind_row("h/-", "parent directory"),
         keybind_row("_", "initial directory"),

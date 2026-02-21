@@ -26,18 +26,37 @@ impl App {
         if self.entries.is_empty() {
             self.selected = 0;
         } else {
-            self.selected = (self.selected + 1) % self.entries.len();
+            self.selected = (self.selected + 1).min(self.entries.len().saturating_sub(1));
         }
     }
 
     pub fn previous(&mut self) {
         if self.entries.is_empty() {
             self.selected = 0;
-        } else if self.selected == 0 {
-            self.selected = self.entries.len() - 1;
         } else {
-            self.selected -= 1;
+            self.selected = self.selected.saturating_sub(1);
         }
+    }
+
+    pub fn page_files_down(&mut self) {
+        if self.entries.is_empty() {
+            self.selected = 0;
+            return;
+        }
+
+        let max_index = self.entries.len().saturating_sub(1);
+        let step = self.file_browser_page_step();
+        self.selected = (self.selected + step).min(max_index);
+    }
+
+    pub fn page_files_up(&mut self) {
+        if self.entries.is_empty() {
+            self.selected = 0;
+            return;
+        }
+
+        let step = self.file_browser_page_step();
+        self.selected = self.selected.saturating_sub(step);
     }
 
     pub fn reload(&mut self) -> io::Result<()> {

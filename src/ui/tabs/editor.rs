@@ -69,28 +69,6 @@ fn render_editor_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
             && app.active_input == InputField::Output)
             .then_some(app.output_cursor);
 
-        let filename = video
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_else(|| video.display().to_string());
-        lines.push(editor_row("Video", filename));
-        lines.push(editor_row("Path", video.display().to_string()));
-        lines.push(Line::from(""));
-        lines.push(editor_section("VIDEO STATS"));
-
-        if let Some(stats) = &app.selected_video_stats {
-            lines.push(editor_row("Duration", stats.duration.clone()));
-            lines.push(editor_row("Resolution", stats.resolution.clone()));
-            lines.push(editor_row("FPS", stats.fps.clone()));
-            lines.push(editor_row("Video", stats.video_codec.clone()));
-            lines.push(editor_row("Audio", stats.audio_codec.clone()));
-            lines.push(editor_row("Size", stats.size.clone()));
-            lines.push(editor_row("Bitrate", stats.bitrate.clone()));
-        } else {
-            lines.push(editor_row("Stats", "unavailable".to_string()));
-        }
-
-        lines.push(editor_separator());
         lines.push(editor_section("TIME RANGE"));
         lines.push(input_hint_line("", "HH:MM:SS"));
         if start_active_part.is_some() {
@@ -158,6 +136,26 @@ fn render_editor_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
             focused_line_index = Some(lines.len());
         }
         lines.push(input_line("Output", &app.output_name, output_active_cursor));
+        lines.push(editor_separator());
+        lines.push(editor_section("VIDEO DETAILS"));
+        let filename = video
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| video.display().to_string());
+        lines.push(editor_row("Video", filename));
+        lines.push(editor_row("Path", video.display().to_string()));
+
+        if let Some(stats) = &app.selected_video_stats {
+            lines.push(editor_row("Duration", stats.duration.clone()));
+            lines.push(editor_row("Resolution", stats.resolution.clone()));
+            lines.push(editor_row("FPS", stats.fps.clone()));
+            lines.push(editor_row("Video", stats.video_codec.clone()));
+            lines.push(editor_row("Audio", stats.audio_codec.clone()));
+            lines.push(editor_row("Size", stats.size.clone()));
+            lines.push(editor_row("Bitrate", stats.bitrate.clone()));
+        } else {
+            lines.push(editor_row("Stats", "unavailable".to_string()));
+        }
     } else {
         lines.push(editor_section("NO VIDEO SELECTED"));
         lines.push(Line::from(""));
@@ -175,15 +173,25 @@ fn render_editor_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
             focus == Focus::RightTop,
             Color::LightYellow,
         ))
-        .title("Editor");
+        .title_top(Line::from("Editor").left_aligned())
+        .title_top(
+            Line::styled("(Up/Down scroll)", Style::default().fg(Color::DarkGray)).right_aligned(),
+        );
     let inner = panel.inner(area);
     let visible_line_count = inner.height as usize;
     let max_scroll_top = lines.len().saturating_sub(visible_line_count);
     let mut scroll_top = app.clamp_editor_form_scroll(max_scroll_top);
+    let focused_line_for_tracking = if focus == Focus::RightTop {
+        focused_line_index
+    } else {
+        None
+    };
+    let focus_line_changed = app.editor_focus_line_changed(focused_line_for_tracking);
 
     // Keep the active editor input visible when Tab/Shift+Tab changes focus.
     if focus == Focus::RightTop
         && visible_line_count > 0
+        && focus_line_changed
         && let Some(focused_line_index) = focused_line_index
     {
         if focused_line_index < scroll_top {
@@ -196,6 +204,7 @@ fn render_editor_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
             }
         }
         scroll_top = scroll_top.min(max_scroll_top);
+        app.set_editor_form_scroll(scroll_top);
     }
 
     let details = Paragraph::new(lines)
