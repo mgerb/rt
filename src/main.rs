@@ -38,7 +38,9 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                 continue;
             }
 
-            if let Event::Key(key) = event && key.kind == KeyEventKind::Press {
+            if let Event::Key(key) = event
+                && key.kind == KeyEventKind::Press
+            {
                 if app.has_pending_cancel() {
                     if key.modifiers.contains(KeyModifiers::CONTROL)
                         && key.code == KeyCode::Char('c')
@@ -115,11 +117,12 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                         }
                         KeyCode::Char('j') => focus = app.next_focus(focus),
                         KeyCode::Char('k') => focus = app.previous_focus(focus),
-                        KeyCode::Char('u') if focus == Focus::RightBottom => match app.right_tab()
-                        {
-                            RightTab::Editor => app.page_ffmpeg_output_up(),
-                            RightTab::Downloader => app.page_downloader_output_up(),
-                        },
+                        KeyCode::Char('u') if focus == Focus::RightBottom => {
+                            match app.right_tab() {
+                                RightTab::Editor => app.page_ffmpeg_output_up(),
+                                RightTab::Downloader => app.page_downloader_output_up(),
+                            }
+                        }
                         KeyCode::Char('d') | KeyCode::Char('p') if focus == Focus::RightBottom => {
                             match app.right_tab() {
                                 RightTab::Editor => app.page_ffmpeg_output_down(),
@@ -179,9 +182,14 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                             _ => {}
                         },
                         RightTab::Downloader => match key.code {
-                            KeyCode::Enter => app.run_downloader_download(),
+                            KeyCode::Tab => app.next_downloader_option_focus(),
+                            KeyCode::BackTab => app.previous_downloader_option_focus(),
+                            KeyCode::Enter => app.downloader_press_enter(),
+                            KeyCode::Down => app.select_downloader_quality_down(),
+                            KeyCode::Up => app.select_downloader_quality_up(),
                             KeyCode::Right => app.move_downloader_cursor_right(),
                             KeyCode::Left => app.move_downloader_cursor_left(),
+                            KeyCode::Char(' ') => app.toggle_focused_downloader_option(),
                             KeyCode::Backspace => app.backspace_downloader_url(),
                             KeyCode::Char(ch) => app.push_downloader_url_char(ch),
                             _ => {}
@@ -210,15 +218,21 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
 }
 
 fn handle_paste_event(app: &mut App, focus: Focus, text: &str) {
-    if app.has_pending_delete() || app.has_pending_cancel() || app.show_keybinds || focus != Focus::RightTop {
+    if app.has_pending_delete()
+        || app.has_pending_cancel()
+        || app.show_keybinds
+        || focus != Focus::RightTop
+    {
         return;
     }
 
     let sanitized = text.chars().filter(|ch| *ch != '\n' && *ch != '\r');
     match app.right_tab() {
         RightTab::Downloader => {
-            for ch in sanitized {
-                app.push_downloader_url_char(ch);
+            if app.downloader_accepts_text_input() {
+                for ch in sanitized {
+                    app.push_downloader_url_char(ch);
+                }
             }
         }
         RightTab::Editor => {
@@ -237,7 +251,7 @@ fn is_text_input_focus(app: &App, focus: Focus) -> bool {
     }
 
     match app.right_tab() {
-        RightTab::Downloader => true,
+        RightTab::Downloader => app.downloader_accepts_text_input(),
         RightTab::Editor => app.active_input == InputField::Output,
     }
 }

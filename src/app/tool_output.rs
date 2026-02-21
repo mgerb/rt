@@ -21,19 +21,13 @@ impl ToolOutput {
     }
 
     pub(crate) fn begin_stream(&mut self, command_line: &str, streaming_message: &str) {
-        self.lines = vec![
-            format!("$ {command_line}"),
-            streaming_message.to_string(),
-        ];
+        self.lines = vec![format!("$ {command_line}"), streaming_message.to_string()];
         self.scroll = self.lines.len().saturating_sub(1);
         self.follow_tail = true;
     }
 
     pub(crate) fn replace_with_command_error(&mut self, command_line: &str, error_message: &str) {
-        self.lines = vec![
-            format!("$ {command_line}"),
-            error_message.to_string(),
-        ];
+        self.lines = vec![format!("$ {command_line}"), error_message.to_string()];
         self.scroll = 0;
         self.follow_tail = true;
     }
