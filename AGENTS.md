@@ -21,3 +21,4 @@
 - When creating new components consider making them reusable so that they can be
   reused across existing (or new) tools.
 - When making commits use the conventional commits strategy for commit messages.
+- Use `jj` to make commits.

@@ -41,6 +41,20 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
             if let Event::Key(key) = event
                 && key.kind == KeyEventKind::Press
             {
+                if key.code == KeyCode::Esc {
+                    if app.has_pending_cancel() {
+                        app.cancel_pending_cancel();
+                    }
+                    if app.has_pending_delete() {
+                        app.cancel_pending_delete();
+                    }
+                    if app.show_keybinds {
+                        app.hide_keybinds();
+                    }
+                    focus = Focus::Left;
+                    continue;
+                }
+
                 if app.has_pending_cancel() {
                     if key.modifiers.contains(KeyModifiers::CONTROL)
                         && key.code == KeyCode::Char('c')
@@ -91,22 +105,6 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                     continue;
                 }
 
-                if key.modifiers == KeyModifiers::SHIFT {
-                    match key.code {
-                        KeyCode::Char('H') => {
-                            app.select_previous_right_tab();
-                            focus = Focus::RightTop;
-                            continue;
-                        }
-                        KeyCode::Char('L') => {
-                            app.select_next_right_tab();
-                            focus = Focus::RightTop;
-                            continue;
-                        }
-                        _ => {}
-                    }
-                }
-
                 if key.modifiers.contains(KeyModifiers::CONTROL) {
                     match key.code {
                         KeyCode::Char('h') => focus = Focus::Left,
@@ -117,6 +115,10 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                         }
                         KeyCode::Char('j') => focus = app.next_focus(focus),
                         KeyCode::Char('k') => focus = app.previous_focus(focus),
+                        KeyCode::Char('n') => {
+                            app.select_next_right_tab();
+                            focus = Focus::RightTop;
+                        }
                         KeyCode::Char('u') if focus == Focus::RightBottom => {
                             match app.right_tab() {
                                 RightTab::Editor => app.page_ffmpeg_output_up(),
@@ -135,12 +137,8 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                     continue;
                 }
 
-                if key.code == KeyCode::Esc {
-                    break Ok(());
-                }
-
                 if let Some(tab_number) = tab_number_shortcut(key.code, key.modifiers)
-                    && !app.should_treat_digit_as_editor_input(focus)
+                    && !is_top_form_focus(focus)
                     && app.select_right_tab_by_number(tab_number)
                 {
                     focus = Focus::RightTop;
@@ -254,6 +252,10 @@ fn is_text_input_focus(app: &App, focus: Focus) -> bool {
         RightTab::Downloader => app.downloader_accepts_text_input(),
         RightTab::Editor => app.active_input == InputField::Output,
     }
+}
+
+fn is_top_form_focus(focus: Focus) -> bool {
+    focus == Focus::RightTop
 }
 
 fn tab_number_shortcut(code: KeyCode, modifiers: KeyModifiers) -> Option<usize> {

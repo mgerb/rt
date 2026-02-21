@@ -15,7 +15,7 @@ use ratatui::{
 
 use crate::{
     app::App,
-    media::is_video_file,
+    media::is_editable_media_file,
     model::{Focus, RightTab},
 };
 
@@ -71,7 +71,10 @@ fn render_right_tabs(frame: &mut Frame, app: &App, focus: Focus, area: ratatui::
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title("Tabs")
+                .title_top(Line::from("Tabs").left_aligned())
+                .title_top(
+                    Line::styled("(ctrl+n)", Style::default().fg(Color::DarkGray)).right_aligned(),
+                )
                 .border_style(pane_border_style(focus != Focus::Left, Color::Cyan)),
         );
 
@@ -86,7 +89,7 @@ fn render_files_pane(frame: &mut Frame, app: &App, focus: Focus, area: ratatui::
         .iter()
         .map(|entry| {
             let line = format_file_row(entry, content_width);
-            if is_video_file(&entry.path) {
+            if is_editable_media_file(&entry.path) {
                 ListItem::new(Line::styled(line, Style::default().fg(Color::LightGreen)))
             } else {
                 ListItem::new(line)
@@ -104,7 +107,10 @@ fn render_files_pane(frame: &mut Frame, app: &App, focus: Focus, area: ratatui::
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(pane_border_style(focus == Focus::Left, Color::LightBlue))
-                .title(format!("Files: {}", app.cwd.display())),
+                .title_top(Line::from(format!("Files: {}", app.cwd.display())).left_aligned())
+                .title_top(
+                    Line::styled("(esc)", Style::default().fg(Color::DarkGray)).right_aligned(),
+                ),
         )
         .highlight_symbol("> ")
         .highlight_style(Style::default().add_modifier(Modifier::BOLD));
@@ -124,22 +130,22 @@ fn render_keybinds_popup(frame: &mut Frame) {
     frame.render_widget(Clear, popup);
 
     let lines = vec![
-        Line::from("Press ? or Esc to close this window."),
+        Line::from("Press ? or Esc to close this window and focus file browser."),
         Line::from(""),
         keybind_section("GLOBAL"),
         keybind_row("?", "toggle keybinds popup"),
-        keybind_row("Esc", "close popup / quit app"),
+        keybind_row("Esc", "close modal/popup + focus file browser"),
         keybind_row("Ctrl+c", "quit app"),
         Line::from(""),
         keybind_section("WINDOW FOCUS"),
         keybind_row("Ctrl+h", "focus left browser"),
         keybind_row("Ctrl+l", "focus right column"),
         keybind_row("Ctrl+j / Ctrl+k", "move window focus"),
-        keybind_row("Shift+H / Shift+L", "previous / next right tab"),
+        keybind_row("Ctrl+n", "next right tab"),
         Line::from(""),
         keybind_section("FILE BROWSER"),
         keybind_row("j/k or Up/Down", "move selection"),
-        keybind_row("Enter", "open dir or select video"),
+        keybind_row("Enter", "open dir or select media"),
         keybind_row("h/-", "parent directory"),
         keybind_row("_", "initial directory"),
         keybind_row("x", "open selected file in system default app"),

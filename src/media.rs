@@ -45,6 +45,21 @@ pub fn is_video_file(path: &Path) -> bool {
     )
 }
 
+pub fn is_audio_file(path: &Path) -> bool {
+    let Some(ext) = path.extension().and_then(|ext| ext.to_str()) else {
+        return false;
+    };
+
+    matches!(
+        ext.to_ascii_lowercase().as_str(),
+        "mp3" | "m4a" | "wav" | "flac" | "aac" | "ogg" | "opus" | "wma"
+    )
+}
+
+pub fn is_editable_media_file(path: &Path) -> bool {
+    is_video_file(path) || is_audio_file(path)
+}
+
 pub fn default_output_name(path: &Path) -> String {
     let stem = path
         .file_stem()
