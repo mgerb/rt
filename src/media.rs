@@ -7,6 +7,8 @@ use std::{
 
 use crate::model::{TimeInput, VideoBounds};
 
+pub const OUTPUT_FORMATS: [&str; 4] = ["mp4", "mov", "mkv", "gif"];
+
 #[derive(Debug, Clone)]
 pub struct VideoStats {
     pub duration: String,
@@ -43,6 +45,29 @@ pub fn default_output_name(path: &Path) -> String {
         format!("{stem}_copy")
     } else {
         format!("{stem}_copy.{ext}")
+    }
+}
+
+pub fn output_format_for_path(path: &Path) -> &'static str {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(normalize_output_format)
+        .unwrap_or(OUTPUT_FORMATS[0])
+}
+
+pub fn enforce_output_extension(output_name: &str, output_format: &str) -> String {
+    let format = normalize_output_format(output_format);
+
+    if output_name.trim().is_empty() {
+        return format!("output.{format}");
+    }
+
+    let mut path = PathBuf::from(output_name);
+    if path.extension().is_some() {
+        path.set_extension(format);
+        path.to_string_lossy().into_owned()
+    } else {
+        format!("{output_name}.{format}")
     }
 }
 
@@ -180,27 +205,6 @@ pub fn summarize_ffmpeg_error(stderr: &str) -> String {
     "unknown ffmpeg error".to_string()
 }
 
-pub fn collect_ffmpeg_lines(command_line: &str, stdout: &[u8], stderr: &[u8]) -> Vec<String> {
-    let mut lines = vec![format!("$ {command_line}"), String::new()];
-
-    lines.push("stderr:".to_string());
-    for line in String::from_utf8_lossy(stderr).lines() {
-        lines.push(line.to_string());
-    }
-
-    lines.push(String::new());
-    lines.push("stdout:".to_string());
-    for line in String::from_utf8_lossy(stdout).lines() {
-        lines.push(line.to_string());
-    }
-
-    if lines.iter().all(|line| line.trim().is_empty()) {
-        vec!["(no ffmpeg output)".to_string()]
-    } else {
-        lines
-    }
-}
-
 pub fn shell_quote(value: &str) -> String {
     if value.is_empty() {
         "''".to_string()
@@ -212,6 +216,14 @@ pub fn shell_quote(value: &str) -> String {
     } else {
         format!("'{}'", value.replace('\'', "'\\''"))
     }
+}
+
+pub fn normalize_output_format(value: &str) -> &'static str {
+    OUTPUT_FORMATS
+        .iter()
+        .copied()
+        .find(|format| format.eq_ignore_ascii_case(value))
+        .unwrap_or(OUTPUT_FORMATS[0])
 }
 
 fn parse_probe_seconds(value: &str) -> Option<f64> {

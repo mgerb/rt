@@ -8,7 +8,7 @@ use std::{io, time::Duration};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 
 use app::App;
-use model::Focus;
+use model::{Focus, InputField};
 
 fn main() -> io::Result<()> {
     let mut terminal = ratatui::init();
@@ -22,6 +22,7 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> io::Result<()> {
     let mut focus = Focus::Left;
 
     loop {
+        app.tick();
         terminal.draw(|frame| ui::render(frame, &app, focus))?;
 
         if event::poll(Duration::from_millis(100))?
@@ -85,8 +86,14 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> io::Result<()> {
                 Focus::RightTop => match key.code {
                     KeyCode::Tab => app.next_input(),
                     KeyCode::BackTab => app.previous_input(),
-                    KeyCode::Right | KeyCode::Char('l') => app.move_cursor_right(),
-                    KeyCode::Left | KeyCode::Char('h') => app.move_cursor_left(),
+                    KeyCode::Right => app.move_cursor_right(),
+                    KeyCode::Left => app.move_cursor_left(),
+                    KeyCode::Char('h') if app.active_input == InputField::Format => {
+                        app.move_cursor_left()
+                    }
+                    KeyCode::Char('l') if app.active_input == InputField::Format => {
+                        app.move_cursor_right()
+                    }
                     KeyCode::Enter => app.trim_selected_video(),
                     KeyCode::Backspace => app.backspace_active_input(),
                     KeyCode::Char(ch) => app.push_active_input_char(ch),
