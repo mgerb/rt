@@ -121,6 +121,7 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                     KeyCode::Char('h') | KeyCode::Char('-') => app.go_parent_dir()?,
                     KeyCode::Char('_') => app.go_initial_dir()?,
                     KeyCode::Char('d') => app.request_delete_selected_entry(),
+                    KeyCode::Char('x') => app.open_selected_with_system_default(),
                     KeyCode::Char('r') => app.reload()?,
                     _ => {}
                 },

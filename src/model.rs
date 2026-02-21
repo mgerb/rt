@@ -9,6 +9,7 @@ pub struct FileEntry {
     pub name: String,
     pub path: PathBuf,
     pub is_dir: bool,
+    pub size_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,6 +90,7 @@ pub enum InputField {
     Format,
     Fps,
     Bitrate,
+    ScalePercent,
     RemoveAudio,
     Output,
 }

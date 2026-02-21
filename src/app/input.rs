@@ -35,12 +35,25 @@ impl App {
             InputField::Format => {
                 self.active_input = InputField::Fps;
                 self.output_fps_cursor = self.output_fps.chars().count();
+                self.overwrite_fps_on_next_type = true;
             }
             InputField::Fps => {
-                self.active_input = InputField::Bitrate;
-                self.output_bitrate_cursor = self.output_bitrate_kbps.chars().count();
+                if self.bitrate_enabled() {
+                    self.active_input = InputField::Bitrate;
+                    self.output_bitrate_cursor = self.output_bitrate_kbps.chars().count();
+                    self.overwrite_bitrate_on_next_type = true;
+                } else {
+                    self.active_input = InputField::ScalePercent;
+                    self.output_scale_percent_cursor = self.output_scale_percent.chars().count();
+                    self.overwrite_scale_percent_on_next_type = true;
+                }
             }
             InputField::Bitrate => {
+                self.active_input = InputField::ScalePercent;
+                self.output_scale_percent_cursor = self.output_scale_percent.chars().count();
+                self.overwrite_scale_percent_on_next_type = true;
+            }
+            InputField::ScalePercent => {
                 self.active_input = InputField::RemoveAudio;
             }
             InputField::RemoveAudio => {
@@ -80,10 +93,23 @@ impl App {
             InputField::Bitrate => {
                 self.active_input = InputField::Fps;
                 self.output_fps_cursor = self.output_fps.chars().count();
+                self.overwrite_fps_on_next_type = true;
+            }
+            InputField::ScalePercent => {
+                if self.bitrate_enabled() {
+                    self.active_input = InputField::Bitrate;
+                    self.output_bitrate_cursor = self.output_bitrate_kbps.chars().count();
+                    self.overwrite_bitrate_on_next_type = true;
+                } else {
+                    self.active_input = InputField::Fps;
+                    self.output_fps_cursor = self.output_fps.chars().count();
+                    self.overwrite_fps_on_next_type = true;
+                }
             }
             InputField::RemoveAudio => {
-                self.active_input = InputField::Bitrate;
-                self.output_bitrate_cursor = self.output_bitrate_kbps.chars().count();
+                self.active_input = InputField::ScalePercent;
+                self.output_scale_percent_cursor = self.output_scale_percent.chars().count();
+                self.overwrite_scale_percent_on_next_type = true;
             }
             InputField::Output => self.active_input = InputField::RemoveAudio,
         }
@@ -92,9 +118,18 @@ impl App {
     pub fn move_cursor_left(&mut self) {
         match self.active_input {
             InputField::Format => self.select_previous_output_format(),
-            InputField::Fps => self.output_fps_cursor = self.output_fps_cursor.saturating_sub(1),
+            InputField::Fps => {
+                self.output_fps_cursor = self.output_fps_cursor.saturating_sub(1);
+                self.overwrite_fps_on_next_type = false;
+            }
             InputField::Bitrate => {
-                self.output_bitrate_cursor = self.output_bitrate_cursor.saturating_sub(1)
+                self.output_bitrate_cursor = self.output_bitrate_cursor.saturating_sub(1);
+                self.overwrite_bitrate_on_next_type = false;
+            }
+            InputField::ScalePercent => {
+                self.output_scale_percent_cursor =
+                    self.output_scale_percent_cursor.saturating_sub(1);
+                self.overwrite_scale_percent_on_next_type = false;
             }
             InputField::Output => self.output_cursor = self.output_cursor.saturating_sub(1),
             _ => {}
@@ -107,10 +142,17 @@ impl App {
             InputField::Fps => {
                 let max = self.output_fps.chars().count();
                 self.output_fps_cursor = (self.output_fps_cursor + 1).min(max);
+                self.overwrite_fps_on_next_type = false;
             }
             InputField::Bitrate => {
                 let max = self.output_bitrate_kbps.chars().count();
                 self.output_bitrate_cursor = (self.output_bitrate_cursor + 1).min(max);
+                self.overwrite_bitrate_on_next_type = false;
+            }
+            InputField::ScalePercent => {
+                let max = self.output_scale_percent.chars().count();
+                self.output_scale_percent_cursor = (self.output_scale_percent_cursor + 1).min(max);
+                self.overwrite_scale_percent_on_next_type = false;
             }
             InputField::Output => {
                 let max = self.output_name.chars().count();
@@ -139,17 +181,42 @@ impl App {
             InputField::Format => {}
             InputField::Fps => {
                 if ch.is_ascii_digit() || (ch == '.' && !self.output_fps.contains('.')) {
+                    if self.overwrite_fps_on_next_type {
+                        self.output_fps.clear();
+                        self.output_fps_cursor = 0;
+                    }
+                    self.overwrite_fps_on_next_type = false;
                     let byte_index = byte_index_for_char(&self.output_fps, self.output_fps_cursor);
                     self.output_fps.insert(byte_index, ch);
                     self.output_fps_cursor += 1;
                 }
             }
             InputField::Bitrate => {
-                if ch.is_ascii_digit() {
+                if self.bitrate_enabled() && ch.is_ascii_digit() {
+                    if self.overwrite_bitrate_on_next_type {
+                        self.output_bitrate_kbps.clear();
+                        self.output_bitrate_cursor = 0;
+                    }
+                    self.overwrite_bitrate_on_next_type = false;
                     let byte_index =
                         byte_index_for_char(&self.output_bitrate_kbps, self.output_bitrate_cursor);
                     self.output_bitrate_kbps.insert(byte_index, ch);
                     self.output_bitrate_cursor += 1;
+                }
+            }
+            InputField::ScalePercent => {
+                if ch.is_ascii_digit() {
+                    if self.overwrite_scale_percent_on_next_type {
+                        self.output_scale_percent.clear();
+                        self.output_scale_percent_cursor = 0;
+                    }
+                    self.overwrite_scale_percent_on_next_type = false;
+                    let byte_index = byte_index_for_char(
+                        &self.output_scale_percent,
+                        self.output_scale_percent_cursor,
+                    );
+                    self.output_scale_percent.insert(byte_index, ch);
+                    self.output_scale_percent_cursor += 1;
                 }
             }
             InputField::RemoveAudio => {
@@ -175,6 +242,7 @@ impl App {
             }
             InputField::Format => {}
             InputField::Fps => {
+                self.overwrite_fps_on_next_type = false;
                 if self.output_fps_cursor == 0 {
                     return;
                 }
@@ -185,6 +253,10 @@ impl App {
                 self.output_fps_cursor -= 1;
             }
             InputField::Bitrate => {
+                self.overwrite_bitrate_on_next_type = false;
+                if !self.bitrate_enabled() {
+                    return;
+                }
                 if self.output_bitrate_cursor == 0 {
                     return;
                 }
@@ -193,6 +265,17 @@ impl App {
                 let end = byte_index_for_char(&self.output_bitrate_kbps, remove_char_index + 1);
                 self.output_bitrate_kbps.replace_range(start..end, "");
                 self.output_bitrate_cursor -= 1;
+            }
+            InputField::ScalePercent => {
+                self.overwrite_scale_percent_on_next_type = false;
+                if self.output_scale_percent_cursor == 0 {
+                    return;
+                }
+                let remove_char_index = self.output_scale_percent_cursor - 1;
+                let start = byte_index_for_char(&self.output_scale_percent, remove_char_index);
+                let end = byte_index_for_char(&self.output_scale_percent, remove_char_index + 1);
+                self.output_scale_percent.replace_range(start..end, "");
+                self.output_scale_percent_cursor -= 1;
             }
             InputField::RemoveAudio => {}
             InputField::Output => {
@@ -219,6 +302,11 @@ impl App {
             current_index - 1
         };
         self.output_format = OUTPUT_FORMATS[next_index];
+        if !self.bitrate_enabled() && self.active_input == InputField::Bitrate {
+            self.active_input = InputField::ScalePercent;
+            self.output_scale_percent_cursor = self.output_scale_percent.chars().count();
+            self.overwrite_scale_percent_on_next_type = true;
+        }
         self.sync_output_extension_to_selected_format();
     }
 
@@ -229,6 +317,11 @@ impl App {
             .unwrap_or(0);
         let next_index = (current_index + 1) % OUTPUT_FORMATS.len();
         self.output_format = OUTPUT_FORMATS[next_index];
+        if !self.bitrate_enabled() && self.active_input == InputField::Bitrate {
+            self.active_input = InputField::ScalePercent;
+            self.output_scale_percent_cursor = self.output_scale_percent.chars().count();
+            self.overwrite_scale_percent_on_next_type = true;
+        }
         self.sync_output_extension_to_selected_format();
     }
 
