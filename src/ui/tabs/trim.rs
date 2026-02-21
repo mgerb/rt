@@ -1,3 +1,7 @@
+// Trim-tab rendering.
+// - Formats selected-video metadata and editable trim/output fields.
+// - Highlights active inputs/focus state for keyboard-driven editing.
+// - Renders the ffmpeg output panel beneath the form.
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Layout, Rect},
@@ -34,6 +38,15 @@ fn render_trim_pane(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
     let mut lines = Vec::new();
     lines.push(trim_section("CLIP SETUP"));
     lines.push(Line::from(""));
+    if !app.ffmpeg_available() {
+        lines.push(ffmpeg_warning_line(
+            "WARNING: ffmpeg not found in PATH. Trimming is disabled.",
+        ));
+        lines.push(ffmpeg_warning_line(
+            "Install ffmpeg, then restart this app.",
+        ));
+        lines.push(Line::from(""));
+    }
 
     if let Some(video) = &app.selected_video {
         let start_active_part = (focus == Focus::RightTop && app.active_input == InputField::Start)
@@ -166,6 +179,15 @@ fn trim_section(title: &str) -> Line<'static> {
         title.to_string(),
         Style::default()
             .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
+    )
+}
+
+fn ffmpeg_warning_line(message: &str) -> Line<'static> {
+    Line::styled(
+        message.to_string(),
+        Style::default()
+            .fg(Color::LightRed)
             .add_modifier(Modifier::BOLD),
     )
 }

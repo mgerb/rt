@@ -1,3 +1,7 @@
+// Shared data model used across state, input handling, and rendering.
+// - Defines app enums (focus targets, tabs, and active input fields).
+// - Defines core value types like file entries and structured time input.
+// - Keeps common types decoupled from module-specific logic.
 use std::path::PathBuf;
 
 #[derive(Debug, Clone)]

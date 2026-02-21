@@ -1,3 +1,7 @@
+// Trim execution workflow.
+// - Validates time range, format-specific options, and required output fields.
+// - Translates current form state into ffmpeg CLI arguments.
+// - Starts ffmpeg jobs and reports launch/validation errors back to the UI.
 use crate::{
     media::{
         enforce_output_extension, next_available_output_path, resolve_output_path, shell_quote,
@@ -11,6 +15,11 @@ impl App {
     pub fn trim_selected_video(&mut self) {
         if self.running_trim.is_some() {
             self.status_message = "ffmpeg is already running. Wait for it to finish.".to_string();
+            return;
+        }
+        if !self.ffmpeg_available() {
+            self.status_message =
+                "ffmpeg was not found in PATH. Install ffmpeg to enable trimming.".to_string();
             return;
         }
 

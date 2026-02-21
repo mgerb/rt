@@ -1,3 +1,7 @@
+// Application entrypoint.
+// - Parses CLI startup arguments.
+// - Owns the crossterm event loop and maps key events to App actions.
+// - Delegates all drawing to the UI layer each frame.
 mod app;
 mod media;
 mod model;

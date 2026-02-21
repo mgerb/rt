@@ -1,3 +1,6 @@
+// Placeholder "Hello" tab renderer.
+// - Demonstrates the tab system with minimal, static content.
+// - Serves as a clean starting point for adding future right-pane tools.
 use ratatui::{
     Frame,
     layout::{Alignment, Rect},

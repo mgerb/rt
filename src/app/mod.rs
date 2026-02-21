@@ -1,9 +1,18 @@
+// Central application state shared by the app submodules.
+// - Stores file-browser state, trim form inputs, tab/focus state, and output logs.
+// - Owns background ffmpeg job state and process communication handles.
+// - Exposes cross-cutting helpers used by event handling and rendering code.
 mod ffmpeg;
 mod files;
 mod input;
 mod trim;
 
-use std::{env, fs, io, path::PathBuf, process::Child, sync::mpsc::Receiver};
+use std::{
+    env, fs, io,
+    path::PathBuf,
+    process::{Child, Command, Stdio},
+    sync::mpsc::Receiver,
+};
 
 use crate::{
     media::{OUTPUT_FORMATS, VideoStats},
@@ -36,6 +45,7 @@ pub struct App {
     pub(crate) status_message: String,
     pub(crate) ffmpeg_output: Vec<String>,
     pub(crate) ffmpeg_scroll: usize,
+    ffmpeg_available: bool,
     pub(crate) show_keybinds: bool,
     pub(crate) ffmpeg_spinner_frame: usize,
     pub(crate) right_tab: RightTab,
@@ -99,6 +109,7 @@ impl App {
             status_message: "Select a video file in the left pane.".to_string(),
             ffmpeg_output: vec!["ffmpeg output will appear here after trimming.".to_string()],
             ffmpeg_scroll: 0,
+            ffmpeg_available: detect_ffmpeg_available(),
             show_keybinds: false,
             ffmpeg_spinner_frame: 0,
             right_tab: RightTab::Trim,
@@ -131,6 +142,10 @@ impl App {
 
     pub fn ffmpeg_spinner_glyph(&self) -> char {
         spinner_frames()[self.ffmpeg_spinner_frame]
+    }
+
+    pub fn ffmpeg_available(&self) -> bool {
+        self.ffmpeg_available
     }
 
     pub fn right_tab(&self) -> RightTab {
@@ -240,4 +255,16 @@ fn resolve_start_dir(start_dir: Option<PathBuf>) -> io::Result<PathBuf> {
 
 fn spinner_frames() -> &'static [char] {
     &['|', '/', '-', '\\']
+}
+
+// Check once at startup so the UI can show a clear warning without spawning
+// a process on every draw.
+fn detect_ffmpeg_available() -> bool {
+    Command::new("ffmpeg")
+        .arg("-version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
 }

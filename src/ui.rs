@@ -1,3 +1,7 @@
+// Root UI composition and shared visual components.
+// - Builds the global layout (left browser + right tab area + footer).
+// - Renders shared chrome: tab bar, keybind popup, and delete-confirm modal.
+// - Delegates tab-specific rendering to ui::tabs submodules.
 mod output_panel;
 mod tabs;
 
