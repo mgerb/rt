@@ -39,6 +39,25 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
             }
 
             if let Event::Key(key) = event && key.kind == KeyEventKind::Press {
+                if app.has_pending_cancel() {
+                    if key.modifiers.contains(KeyModifiers::CONTROL)
+                        && key.code == KeyCode::Char('c')
+                    {
+                        break Ok(());
+                    }
+
+                    match key.code {
+                        KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
+                            app.confirm_pending_cancel()
+                        }
+                        KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') => {
+                            app.cancel_pending_cancel()
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+
                 if app.has_pending_delete() {
                     if key.modifiers.contains(KeyModifiers::CONTROL)
                         && key.code == KeyCode::Char('c')
@@ -172,11 +191,15 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
                         RightTab::Editor => match key.code {
                             KeyCode::Down | KeyCode::Char('j') => app.scroll_ffmpeg_output_down(),
                             KeyCode::Up | KeyCode::Char('k') => app.scroll_ffmpeg_output_up(),
+                            KeyCode::Char('x') => app.request_cancel_for_focused_tool(),
                             _ => {}
                         },
                         RightTab::Downloader => match key.code {
-                            KeyCode::Down | KeyCode::Char('j') => app.scroll_downloader_output_down(),
+                            KeyCode::Down | KeyCode::Char('j') => {
+                                app.scroll_downloader_output_down()
+                            }
                             KeyCode::Up | KeyCode::Char('k') => app.scroll_downloader_output_up(),
+                            KeyCode::Char('x') => app.request_cancel_for_focused_tool(),
                             _ => {}
                         },
                     },
@@ -187,7 +210,7 @@ fn run(terminal: &mut ratatui::DefaultTerminal, start_dir: Option<PathBuf>) -> i
 }
 
 fn handle_paste_event(app: &mut App, focus: Focus, text: &str) {
-    if app.has_pending_delete() || app.show_keybinds || focus != Focus::RightTop {
+    if app.has_pending_delete() || app.has_pending_cancel() || app.show_keybinds || focus != Focus::RightTop {
         return;
     }
 

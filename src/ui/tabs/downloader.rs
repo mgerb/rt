@@ -70,26 +70,19 @@ fn render_downloader_form(frame: &mut Frame, app: &App, focus: Focus, area: Rect
 }
 
 fn render_downloader_output(frame: &mut Frame, app: &App, focus: Focus, area: Rect) {
-    let title = if app.downloader_is_running() {
-        format!(
-            "downloader output {} running (scroll: {})",
-            app.downloader_spinner_glyph(),
-            app.downloader_output_scroll()
-        )
-    } else {
-        format!("downloader output (scroll: {})", app.downloader_output_scroll())
-    };
+    let title = "TOOL OUTPUT";
 
     render_log_panel(
         frame,
         area,
         LogPanelStateView {
-            title: &title,
+            title,
             lines: app.downloader_output_lines(),
             scroll: app.downloader_output_scroll(),
             focused: focus == Focus::RightBottom,
             accent_color: Color::LightBlue,
             trim_wrapped_lines: false,
+            title_hint_right: Some("(press x to cancel)"),
         },
     );
 }

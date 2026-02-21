@@ -18,6 +18,32 @@ use crate::media::summarize_ffmpeg_error;
 use super::{App, FfmpegEvent, FfmpegStream, RunningEditor};
 
 impl App {
+    pub fn cancel_editor_export(&mut self) {
+        let Some(running) = self.running_editor.as_mut() else {
+            self.status_message = "No running editor export to cancel.".to_string();
+            return;
+        };
+
+        match running.child.try_wait() {
+            Ok(Some(_)) => {
+                self.status_message = "Editor export is already finishing.".to_string();
+            }
+            Ok(None) => match running.child.kill() {
+                Ok(()) => {
+                    self.status_message = "Cancellation requested for editor export.".to_string();
+                    self.ffmpeg_output
+                        .append_line("Cancellation requested by user (x).".to_string());
+                }
+                Err(err) => {
+                    self.status_message = format!("Failed to cancel editor export: {err}");
+                }
+            },
+            Err(err) => {
+                self.status_message = format!("Failed to inspect editor export process: {err}");
+            }
+        }
+    }
+
     pub(super) fn start_ffmpeg_job(
         &mut self,
         command_line: String,
