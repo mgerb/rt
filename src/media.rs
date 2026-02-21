@@ -85,6 +85,52 @@ pub fn resolve_output_path(input_path: &Path, output_name: &str) -> PathBuf {
     }
 }
 
+pub fn next_available_output_path(path: &Path) -> PathBuf {
+    if !path.exists() {
+        return path.to_path_buf();
+    }
+
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
+    let stem = path
+        .file_stem()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "output".to_string());
+    let (base_stem, parsed_number) = split_numbered_suffix(&stem);
+    let mut number = parsed_number
+        .and_then(|value| value.checked_add(1))
+        .unwrap_or(1);
+
+    loop {
+        let candidate_name = if extension.is_empty() {
+            format!("{base_stem}({number})")
+        } else {
+            format!("{base_stem}({number}).{extension}")
+        };
+        let candidate_path = parent.join(candidate_name);
+        if !candidate_path.exists() {
+            return candidate_path;
+        }
+        number = number.saturating_add(1);
+    }
+}
+
+pub fn output_path_without_numbered_suffix(path: &Path) -> PathBuf {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
+    let stem = path
+        .file_stem()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "output".to_string());
+    let (base_stem, _) = split_numbered_suffix(&stem);
+
+    if extension.is_empty() {
+        parent.join(base_stem)
+    } else {
+        parent.join(format!("{base_stem}.{extension}"))
+    }
+}
+
 pub fn probe_video_times(path: &Path) -> io::Result<(TimeInput, TimeInput, VideoBounds)> {
     let output = Command::new("ffprobe")
         .arg("-v")
@@ -237,6 +283,32 @@ fn parse_probe_seconds(value: &str) -> Option<f64> {
     } else {
         None
     }
+}
+
+fn split_numbered_suffix(stem: &str) -> (String, Option<u32>) {
+    let Some(without_close) = stem.strip_suffix(')') else {
+        return (stem.to_string(), None);
+    };
+
+    let Some(open_index) = without_close.rfind('(') else {
+        return (stem.to_string(), None);
+    };
+
+    let number_text = &without_close[open_index + 1..];
+    if number_text.is_empty() || !number_text.chars().all(|ch| ch.is_ascii_digit()) {
+        return (stem.to_string(), None);
+    }
+
+    let Some(number) = number_text.parse::<u32>().ok() else {
+        return (stem.to_string(), None);
+    };
+
+    let base = &without_close[..open_index];
+    if base.is_empty() {
+        return (stem.to_string(), None);
+    }
+
+    (base.to_string(), Some(number))
 }
 
 fn parse_key_value_lines(input: &str) -> HashMap<String, String> {

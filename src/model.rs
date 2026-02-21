@@ -37,6 +37,7 @@ pub enum InputField {
     Start,
     End,
     Format,
+    RemoveAudio,
     Output,
 }
 
