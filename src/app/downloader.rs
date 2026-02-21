@@ -15,6 +15,32 @@ use crate::media::shell_quote;
 use super::{App, RunningDownloader, DownloaderEvent, DownloaderStream};
 
 impl App {
+    pub fn cancel_downloader(&mut self) {
+        let Some(running) = self.running_downloader.as_mut() else {
+            self.status_message = "No running downloader job to cancel.".to_string();
+            return;
+        };
+
+        match running.child.try_wait() {
+            Ok(Some(_)) => {
+                self.status_message = "Downloader job is already finishing.".to_string();
+            }
+            Ok(None) => match running.child.kill() {
+                Ok(()) => {
+                    self.status_message = "Cancellation requested for downloader job.".to_string();
+                    self.downloader_output
+                        .append_line("Cancellation requested by user (x).".to_string());
+                }
+                Err(err) => {
+                    self.status_message = format!("Failed to cancel downloader job: {err}");
+                }
+            },
+            Err(err) => {
+                self.status_message = format!("Failed to inspect downloader process: {err}");
+            }
+        }
+    }
+
     pub fn run_downloader_download(&mut self) {
         if self.running_downloader.is_some() {
             self.status_message = "Downloader is already running. Wait for it to finish.".to_string();

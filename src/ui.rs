@@ -43,6 +43,8 @@ pub fn render(frame: &mut Frame, app: &App, focus: Focus) {
     }
     if app.has_pending_delete() {
         render_delete_confirm_modal(frame, app);
+    } else if app.has_pending_cancel() {
+        render_cancel_confirm_modal(frame, app);
     }
 }
 
@@ -157,13 +159,15 @@ fn render_keybinds_popup(frame: &mut Frame) {
         keybind_row("Type URL", "edit download URL"),
         keybind_row("Enter", "run downloader"),
         Line::from(""),
-        keybind_section("FFMPEG OUTPUT"),
+        keybind_section("TOOL OUTPUT"),
         keybind_row("j/k or Up/Down", "scroll output"),
         keybind_row("Ctrl+u / Ctrl+d", "page up / page down"),
+        keybind_row("x", "cancel running tool"),
         Line::from(""),
         keybind_section("DOWNLOADER OUTPUT"),
         keybind_row("j/k or Up/Down", "scroll output"),
         keybind_row("Ctrl+u / Ctrl+d", "page up / page down"),
+        keybind_row("x", "cancel running tool"),
     ];
 
     let popup_widget = Paragraph::new(lines)
@@ -211,6 +215,48 @@ fn render_delete_confirm_modal(frame: &mut Frame, app: &App) {
             Block::default()
                 .borders(Borders::ALL)
                 .title("Confirm Delete")
+                .border_style(pane_border_style(true, Color::LightRed)),
+        )
+        .alignment(Alignment::Left)
+        .wrap(Wrap { trim: true });
+
+    frame.render_widget(popup_widget, popup);
+}
+
+fn render_cancel_confirm_modal(frame: &mut Frame, app: &App) {
+    let Some(label) = app.pending_cancel_label() else {
+        return;
+    };
+
+    let outer = frame.area();
+    let [vertical] = Layout::vertical([Constraint::Percentage(38)])
+        .flex(ratatui::layout::Flex::Center)
+        .areas(outer);
+    let [popup] = Layout::horizontal([Constraint::Percentage(58)])
+        .flex(ratatui::layout::Flex::Center)
+        .areas(vertical);
+
+    frame.render_widget(Clear, popup);
+
+    let lines = vec![
+        Line::styled(
+            "Cancel running tool?",
+            Style::default()
+                .fg(Color::LightRed)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Line::from(""),
+        Line::from(format!("Target: {label}")),
+        Line::from(""),
+        Line::from("Press y or Enter to confirm."),
+        Line::from("Press n or Esc to keep it running."),
+    ];
+
+    let popup_widget = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Confirm Cancel")
                 .border_style(pane_border_style(true, Color::LightRed)),
         )
         .alignment(Alignment::Left)

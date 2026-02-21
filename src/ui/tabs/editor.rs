@@ -181,6 +181,7 @@ fn render_ffmpeg_output_pane(frame: &mut Frame, app: &App, focus: Focus, area: R
             focused: focus == Focus::RightBottom,
             accent_color: Color::LightMagenta,
             trim_wrapped_lines: false,
+            title_hint_right: Some("(press x to cancel)"),
         },
     );
 }

@@ -64,6 +64,7 @@ pub struct App {
     pub(crate) downloader_spinner_frame: usize,
     pub(crate) right_tab: RightTab,
     pending_delete: Option<PendingDelete>,
+    pending_cancel: Option<PendingCancel>,
     running_editor: Option<RunningEditor>,
     running_downloader: Option<RunningDownloader>,
 }
@@ -71,6 +72,11 @@ pub struct App {
 struct PendingDelete {
     name: String,
     path: PathBuf,
+}
+
+enum PendingCancel {
+    Editor,
+    Downloader,
 }
 
 struct RunningEditor {
@@ -156,14 +162,10 @@ impl App {
             selected_video_stats: None,
             selected_video_bounds: None,
             status_message: "Select a video file in the left pane.".to_string(),
-            ffmpeg_output: ToolOutput::with_placeholder(
-                "ffmpeg output will appear here after export.",
-            ),
+            ffmpeg_output: ToolOutput::empty(),
             downloader_url: String::new(),
             downloader_url_cursor: 0,
-            downloader_output: ToolOutput::with_placeholder(
-                "Downloader output will appear here after a download.",
-            ),
+            downloader_output: ToolOutput::empty(),
             ffmpeg_available,
             downloader_available,
             gpu_h264_encoder_available,
@@ -172,6 +174,7 @@ impl App {
             downloader_spinner_frame: 0,
             right_tab: RightTab::Editor,
             pending_delete: None,
+            pending_cancel: None,
             running_editor: None,
             running_downloader: None,
         })
@@ -209,14 +212,6 @@ impl App {
 
     pub fn ffmpeg_output_scroll(&self) -> usize {
         self.ffmpeg_output.scroll()
-    }
-
-    pub fn downloader_is_running(&self) -> bool {
-        self.running_downloader.is_some()
-    }
-
-    pub fn downloader_spinner_glyph(&self) -> char {
-        spinner_frames()[self.downloader_spinner_frame]
     }
 
     pub fn downloader_available(&self) -> bool {
@@ -334,6 +329,50 @@ impl App {
         self.pending_delete
             .as_ref()
             .map(|pending| (pending.name.as_str(), pending.path.as_path()))
+    }
+
+    pub fn has_pending_cancel(&self) -> bool {
+        self.pending_cancel.is_some()
+    }
+
+    pub fn pending_cancel_label(&self) -> Option<&'static str> {
+        match self.pending_cancel {
+            Some(PendingCancel::Editor) => Some("Editor export"),
+            Some(PendingCancel::Downloader) => Some("Downloader job"),
+            None => None,
+        }
+    }
+
+    pub fn request_cancel_for_focused_tool(&mut self) {
+        self.pending_cancel = match self.right_tab {
+            RightTab::Editor if self.running_editor.is_some() => Some(PendingCancel::Editor),
+            RightTab::Downloader if self.running_downloader.is_some() => {
+                Some(PendingCancel::Downloader)
+            }
+            RightTab::Editor => {
+                self.status_message = "No running editor export to cancel.".to_string();
+                None
+            }
+            RightTab::Downloader => {
+                self.status_message = "No running downloader job to cancel.".to_string();
+                None
+            }
+        };
+    }
+
+    pub fn cancel_pending_cancel(&mut self) {
+        self.pending_cancel = None;
+    }
+
+    pub fn confirm_pending_cancel(&mut self) {
+        let Some(target) = self.pending_cancel.take() else {
+            return;
+        };
+
+        match target {
+            PendingCancel::Editor => self.cancel_editor_export(),
+            PendingCancel::Downloader => self.cancel_downloader(),
+        }
     }
 }
 

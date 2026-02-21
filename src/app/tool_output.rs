@@ -12,9 +12,9 @@ pub(crate) struct ToolOutput {
 impl ToolOutput {
     const PAGE_STEP: usize = 12;
 
-    pub(crate) fn with_placeholder(placeholder: &str) -> Self {
+    pub(crate) fn empty() -> Self {
         Self {
-            lines: vec![placeholder.to_string()],
+            lines: Vec::new(),
             scroll: 0,
             follow_tail: true,
         }
