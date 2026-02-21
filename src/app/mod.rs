@@ -5,7 +5,9 @@
 mod ffmpeg;
 mod files;
 mod input;
+mod tool_output;
 mod trim;
+mod yt_dlp;
 
 use std::{
     env, fs, io,
@@ -15,11 +17,12 @@ use std::{
 };
 
 use crate::{
-    media::{OUTPUT_FORMATS, VideoStats},
+    media::{OUTPUT_FORMATS, VideoStats, is_audio_output_format},
     model::{FileEntry, Focus, InputField, RightTab, TimeInput, VideoBounds},
 };
 
 use self::files::read_entries;
+use self::tool_output::ToolOutput;
 
 pub struct App {
     pub(crate) cwd: PathBuf,
@@ -49,15 +52,20 @@ pub struct App {
     pub(crate) selected_video_stats: Option<VideoStats>,
     selected_video_bounds: Option<VideoBounds>,
     pub(crate) status_message: String,
-    pub(crate) ffmpeg_output: Vec<String>,
-    pub(crate) ffmpeg_scroll: usize,
+    pub(crate) ffmpeg_output: ToolOutput,
+    pub(crate) yt_dlp_url: String,
+    pub(crate) yt_dlp_url_cursor: usize,
+    pub(crate) yt_dlp_output: ToolOutput,
     ffmpeg_available: bool,
+    yt_dlp_available: bool,
     gpu_h264_encoder_available: bool,
     pub(crate) show_keybinds: bool,
     pub(crate) ffmpeg_spinner_frame: usize,
+    pub(crate) yt_dlp_spinner_frame: usize,
     pub(crate) right_tab: RightTab,
     pending_delete: Option<PendingDelete>,
     running_trim: Option<RunningTrim>,
+    running_yt_dlp: Option<RunningYtDlp>,
 }
 
 struct PendingDelete {
@@ -76,6 +84,16 @@ struct RunningTrim {
     stderr_pending: Vec<u8>,
 }
 
+struct RunningYtDlp {
+    child: Child,
+    rx: Receiver<YtDlpEvent>,
+    command_line: String,
+    stdout_raw: Vec<u8>,
+    stderr_raw: Vec<u8>,
+    stdout_pending: Vec<u8>,
+    stderr_pending: Vec<u8>,
+}
+
 #[derive(Clone, Copy)]
 enum FfmpegStream {
     Stdout,
@@ -87,11 +105,23 @@ enum FfmpegEvent {
     ReaderError { stream: FfmpegStream, error: String },
 }
 
+#[derive(Clone, Copy)]
+enum YtDlpStream {
+    Stdout,
+    Stderr,
+}
+
+enum YtDlpEvent {
+    Chunk { stream: YtDlpStream, data: Vec<u8> },
+    ReaderError { stream: YtDlpStream, error: String },
+}
+
 impl App {
     pub fn new(start_dir: Option<PathBuf>) -> io::Result<Self> {
         let cwd = resolve_start_dir(start_dir)?;
         let entries = read_entries(&cwd)?;
         let ffmpeg_available = detect_ffmpeg_available();
+        let yt_dlp_available = detect_yt_dlp_available();
         let gpu_h264_encoder_available = if ffmpeg_available {
             detect_ffmpeg_encoder_available("h264_nvenc")
         } else {
@@ -126,15 +156,24 @@ impl App {
             selected_video_stats: None,
             selected_video_bounds: None,
             status_message: "Select a video file in the left pane.".to_string(),
-            ffmpeg_output: vec!["ffmpeg output will appear here after trimming.".to_string()],
-            ffmpeg_scroll: 0,
+            ffmpeg_output: ToolOutput::with_placeholder(
+                "ffmpeg output will appear here after trimming.",
+            ),
+            yt_dlp_url: String::new(),
+            yt_dlp_url_cursor: 0,
+            yt_dlp_output: ToolOutput::with_placeholder(
+                "yt-dlp output will appear here after a download.",
+            ),
             ffmpeg_available,
+            yt_dlp_available,
             gpu_h264_encoder_available,
             show_keybinds: false,
             ffmpeg_spinner_frame: 0,
+            yt_dlp_spinner_frame: 0,
             right_tab: RightTab::Trim,
             pending_delete: None,
             running_trim: None,
+            running_yt_dlp: None,
         })
     }
 
@@ -147,25 +186,49 @@ impl App {
     }
 
     pub fn tick(&mut self) {
-        if self.running_trim.is_none() {
-            return;
+        if self.running_trim.is_some() {
+            self.ffmpeg_spinner_frame = (self.ffmpeg_spinner_frame + 1) % spinner_frames().len();
+            self.pump_running_trim_events();
+            self.try_finish_running_trim();
         }
 
-        self.ffmpeg_spinner_frame = (self.ffmpeg_spinner_frame + 1) % spinner_frames().len();
-        self.pump_running_trim_events();
-        self.try_finish_running_trim();
-    }
-
-    pub fn ffmpeg_is_running(&self) -> bool {
-        self.running_trim.is_some()
-    }
-
-    pub fn ffmpeg_spinner_glyph(&self) -> char {
-        spinner_frames()[self.ffmpeg_spinner_frame]
+        if self.running_yt_dlp.is_some() {
+            self.yt_dlp_spinner_frame = (self.yt_dlp_spinner_frame + 1) % spinner_frames().len();
+            self.pump_running_yt_dlp_events();
+            self.try_finish_running_yt_dlp();
+        }
     }
 
     pub fn ffmpeg_available(&self) -> bool {
         self.ffmpeg_available
+    }
+
+    pub fn ffmpeg_output_lines(&self) -> &[String] {
+        self.ffmpeg_output.lines()
+    }
+
+    pub fn ffmpeg_output_scroll(&self) -> usize {
+        self.ffmpeg_output.scroll()
+    }
+
+    pub fn yt_dlp_is_running(&self) -> bool {
+        self.running_yt_dlp.is_some()
+    }
+
+    pub fn yt_dlp_spinner_glyph(&self) -> char {
+        spinner_frames()[self.yt_dlp_spinner_frame]
+    }
+
+    pub fn yt_dlp_available(&self) -> bool {
+        self.yt_dlp_available
+    }
+
+    pub fn yt_dlp_output_lines(&self) -> &[String] {
+        self.yt_dlp_output.lines()
+    }
+
+    pub fn yt_dlp_output_scroll(&self) -> usize {
+        self.yt_dlp_output.scroll()
     }
 
     pub fn gpu_h264_encoder_available(&self) -> bool {
@@ -180,8 +243,16 @@ impl App {
         self.output_format == "gif"
     }
 
+    pub fn audio_only_output_selected(&self) -> bool {
+        is_audio_output_format(self.output_format)
+    }
+
     pub fn bitrate_enabled(&self) -> bool {
-        !self.is_gif_output()
+        !self.is_gif_output() && !self.audio_only_output_selected()
+    }
+
+    pub fn video_options_enabled(&self) -> bool {
+        !self.audio_only_output_selected()
     }
 
     pub fn select_next_right_tab(&mut self) {
@@ -201,7 +272,14 @@ impl App {
     }
 
     pub fn should_treat_digit_as_trim_input(&self, focus: Focus) -> bool {
-        if focus != Focus::RightTop || self.right_tab != RightTab::Trim {
+        if focus != Focus::RightTop {
+            return false;
+        }
+
+        if self.right_tab == RightTab::YtDlp {
+            return true;
+        }
+        if self.right_tab != RightTab::Trim {
             return false;
         }
 
@@ -217,7 +295,7 @@ impl App {
     }
 
     pub fn can_focus_right_bottom(&self) -> bool {
-        self.right_tab == RightTab::Trim
+        matches!(self.right_tab, RightTab::Trim | RightTab::YtDlp)
     }
 
     pub fn normalize_focus(&self, focus: &mut Focus) {
@@ -295,6 +373,16 @@ fn spinner_frames() -> &'static [char] {
 fn detect_ffmpeg_available() -> bool {
     Command::new("ffmpeg")
         .arg("-version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+fn detect_yt_dlp_available() -> bool {
+    Command::new("yt-dlp")
+        .arg("--version")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()

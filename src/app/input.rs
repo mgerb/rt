@@ -33,9 +33,14 @@ impl App {
                 }
             }
             InputField::Format => {
-                self.active_input = InputField::Fps;
-                self.output_fps_cursor = self.output_fps.chars().count();
-                self.overwrite_fps_on_next_type = true;
+                if self.video_options_enabled() {
+                    self.active_input = InputField::Fps;
+                    self.output_fps_cursor = self.output_fps.chars().count();
+                    self.overwrite_fps_on_next_type = true;
+                } else {
+                    self.active_input = InputField::Output;
+                    self.output_cursor = self.output_name.chars().count();
+                }
             }
             InputField::Fps => {
                 if self.bitrate_enabled() {
@@ -111,7 +116,13 @@ impl App {
                 self.output_scale_percent_cursor = self.output_scale_percent.chars().count();
                 self.overwrite_scale_percent_on_next_type = true;
             }
-            InputField::Output => self.active_input = InputField::RemoveAudio,
+            InputField::Output => {
+                if self.video_options_enabled() {
+                    self.active_input = InputField::RemoveAudio;
+                } else {
+                    self.active_input = InputField::Format;
+                }
+            }
         }
     }
 
@@ -180,6 +191,9 @@ impl App {
             }
             InputField::Format => {}
             InputField::Fps => {
+                if !self.video_options_enabled() {
+                    return;
+                }
                 if ch.is_ascii_digit() || (ch == '.' && !self.output_fps.contains('.')) {
                     if self.overwrite_fps_on_next_type {
                         self.output_fps.clear();
@@ -205,7 +219,7 @@ impl App {
                 }
             }
             InputField::ScalePercent => {
-                if ch.is_ascii_digit() {
+                if self.video_options_enabled() && ch.is_ascii_digit() {
                     if self.overwrite_scale_percent_on_next_type {
                         self.output_scale_percent.clear();
                         self.output_scale_percent_cursor = 0;
@@ -220,7 +234,7 @@ impl App {
                 }
             }
             InputField::RemoveAudio => {
-                if ch == ' ' {
+                if self.video_options_enabled() && ch == ' ' {
                     self.toggle_remove_audio();
                 }
             }
@@ -242,6 +256,9 @@ impl App {
             }
             InputField::Format => {}
             InputField::Fps => {
+                if !self.video_options_enabled() {
+                    return;
+                }
                 self.overwrite_fps_on_next_type = false;
                 if self.output_fps_cursor == 0 {
                     return;
@@ -267,6 +284,9 @@ impl App {
                 self.output_bitrate_cursor -= 1;
             }
             InputField::ScalePercent => {
+                if !self.video_options_enabled() {
+                    return;
+                }
                 self.overwrite_scale_percent_on_next_type = false;
                 if self.output_scale_percent_cursor == 0 {
                     return;
@@ -303,9 +323,13 @@ impl App {
         };
         self.output_format = OUTPUT_FORMATS[next_index];
         if !self.bitrate_enabled() && self.active_input == InputField::Bitrate {
-            self.active_input = InputField::ScalePercent;
-            self.output_scale_percent_cursor = self.output_scale_percent.chars().count();
-            self.overwrite_scale_percent_on_next_type = true;
+            if self.video_options_enabled() {
+                self.active_input = InputField::ScalePercent;
+                self.output_scale_percent_cursor = self.output_scale_percent.chars().count();
+                self.overwrite_scale_percent_on_next_type = true;
+            } else {
+                self.active_input = InputField::Output;
+            }
         }
         self.sync_output_extension_to_selected_format();
     }
@@ -318,9 +342,13 @@ impl App {
         let next_index = (current_index + 1) % OUTPUT_FORMATS.len();
         self.output_format = OUTPUT_FORMATS[next_index];
         if !self.bitrate_enabled() && self.active_input == InputField::Bitrate {
-            self.active_input = InputField::ScalePercent;
-            self.output_scale_percent_cursor = self.output_scale_percent.chars().count();
-            self.overwrite_scale_percent_on_next_type = true;
+            if self.video_options_enabled() {
+                self.active_input = InputField::ScalePercent;
+                self.output_scale_percent_cursor = self.output_scale_percent.chars().count();
+                self.overwrite_scale_percent_on_next_type = true;
+            } else {
+                self.active_input = InputField::Output;
+            }
         }
         self.sync_output_extension_to_selected_format();
     }

@@ -45,11 +45,8 @@ impl App {
         spawn_ffmpeg_reader(stderr, FfmpegStream::Stderr, tx);
 
         self.ffmpeg_spinner_frame = 0;
-        self.ffmpeg_output = vec![
-            format!("$ {command_line}"),
-            "Streaming ffmpeg output...".to_string(),
-        ];
-        self.ffmpeg_scroll = self.ffmpeg_output.len().saturating_sub(1);
+        self.ffmpeg_output
+            .begin_stream(&command_line, "Streaming ffmpeg output...");
         self.running_trim = Some(RunningTrim {
             child,
             rx,
@@ -194,15 +191,11 @@ impl App {
             FfmpegStream::Stdout => "stdout",
             FfmpegStream::Stderr => "stderr",
         };
-        self.append_ffmpeg_output_line(format!("{prefix}: {line}"));
+        self.ffmpeg_output.append_prefixed(prefix, line);
     }
 
     fn append_ffmpeg_output_line(&mut self, line: String) {
-        let follow_tail = self.ffmpeg_scroll >= self.ffmpeg_output.len().saturating_sub(1);
-        self.ffmpeg_output.push(line);
-        if follow_tail {
-            self.ffmpeg_scroll = self.ffmpeg_output.len().saturating_sub(1);
-        }
+        self.ffmpeg_output.append_line(line);
     }
 
     pub(super) fn append_ffmpeg_run_log(

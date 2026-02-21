@@ -76,10 +76,15 @@ impl App {
             return;
         }
 
-        let output_fps = self.output_fps.trim().to_string();
-        let Some(parsed_output_fps) = parse_output_fps(&output_fps) else {
-            self.status_message = "FPS must be a number greater than 0.".to_string();
-            return;
+        let parsed_output_fps = if self.video_options_enabled() {
+            let output_fps = self.output_fps.trim().to_string();
+            let Some(parsed_output_fps) = parse_output_fps(&output_fps) else {
+                self.status_message = "FPS must be a number greater than 0.".to_string();
+                return;
+            };
+            Some(parsed_output_fps)
+        } else {
+            None
         };
         let parsed_output_bitrate_kbps = if self.bitrate_enabled() {
             let output_bitrate = self.output_bitrate_kbps.trim().to_string();
@@ -92,10 +97,15 @@ impl App {
         } else {
             None
         };
-        let Some(scale_percent) = parse_output_scale_percent(&self.output_scale_percent) else {
-            self.status_message =
-                "Scale percent must be a whole number between 1 and 100.".to_string();
-            return;
+        let scale_percent = if self.video_options_enabled() {
+            let Some(scale_percent) = parse_output_scale_percent(&self.output_scale_percent) else {
+                self.status_message =
+                    "Scale percent must be a whole number between 1 and 100.".to_string();
+                return;
+            };
+            scale_percent
+        } else {
+            100
         };
 
         let output_name = enforce_output_extension(output, self.output_format);
@@ -106,7 +116,6 @@ impl App {
         let output_path = next_available_output_path(&requested_output_path);
         self.sync_output_name_with_path(&output_name, &output_path);
         self.status_message = format!("Running ffmpeg -> {}", output_path.display());
-        self.ffmpeg_scroll = 0;
 
         let mut ffmpeg_args = vec![
             "-y".to_string(),
@@ -125,7 +134,7 @@ impl App {
             "make_zero".to_string(),
         ];
         let mut filters = Vec::new();
-        if scale_percent != 100 {
+        if self.video_options_enabled() && scale_percent != 100 {
             let scale_filter = if let Some(stats) = self.selected_video_stats.as_ref() {
                 if let (Some(width), Some(height)) = (stats.width, stats.height) {
                     let (scaled_width, scaled_height) =
@@ -142,7 +151,27 @@ impl App {
             filters.push(scale_filter);
         }
 
-        if self.output_format == "gif" {
+        if self.audio_only_output_selected() {
+            let (audio_codec, audio_args) = match self.output_format {
+                "mp3" => ("libmp3lame", vec!["-b:a".to_string(), "192k".to_string()]),
+                "m4a" => ("aac", vec!["-b:a".to_string(), "192k".to_string()]),
+                "wav" => ("pcm_s16le", Vec::new()),
+                "flac" => ("flac", Vec::new()),
+                _ => ("aac", vec!["-b:a".to_string(), "192k".to_string()]),
+            };
+            ffmpeg_args.extend([
+                "-map".to_string(),
+                "0:a:0?".to_string(),
+                "-vn".to_string(),
+                "-c:a".to_string(),
+                audio_codec.to_string(),
+            ]);
+            ffmpeg_args.extend(audio_args);
+        } else if self.output_format == "gif" {
+            let Some(parsed_output_fps) = parsed_output_fps else {
+                self.status_message = "FPS must be a number greater than 0.".to_string();
+                return;
+            };
             filters.push(format!("fps={parsed_output_fps}"));
             ffmpeg_args.extend([
                 "-map".to_string(),
@@ -152,6 +181,10 @@ impl App {
                 "0".to_string(),
             ]);
         } else {
+            let Some(parsed_output_fps) = parsed_output_fps else {
+                self.status_message = "FPS must be a number greater than 0.".to_string();
+                return;
+            };
             let Some(parsed_output_bitrate_kbps) = parsed_output_bitrate_kbps else {
                 self.status_message = "Bitrate must be a whole number greater than 0.".to_string();
                 return;
@@ -173,7 +206,7 @@ impl App {
                 "-pix_fmt".to_string(),
                 "yuv420p".to_string(),
                 "-r".to_string(),
-                parsed_output_fps.clone(),
+                parsed_output_fps,
             ]);
             if self.remove_audio {
                 ffmpeg_args.push("-an".to_string());
@@ -209,11 +242,10 @@ impl App {
                 self.status_message = format!("Running ffmpeg -> {}", output_path.display());
             }
             Err(err) => {
-                self.ffmpeg_output = vec![
-                    format!("$ {command_line}"),
-                    format!("Failed to start ffmpeg: {err}"),
-                ];
-                self.ffmpeg_scroll = 0;
+                self.ffmpeg_output.replace_with_command_error(
+                    &command_line,
+                    &format!("Failed to start ffmpeg: {err}"),
+                );
 
                 match self.append_ffmpeg_run_log(
                     &command_line,
