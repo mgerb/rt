@@ -42,9 +42,9 @@ pub fn default_output_name(path: &Path) -> String {
         .unwrap_or_default();
 
     if ext.is_empty() {
-        format!("{stem}_copy")
+        stem
     } else {
-        format!("{stem}_copy.{ext}")
+        format!("{stem}.{ext}")
     }
 }
 

@@ -85,6 +85,8 @@ fn render_trim_pane(frame: &mut Frame, app: &App, focus: Focus, area: ratatui::l
         let end_active_part = (focus == Focus::RightTop && app.active_input == InputField::End)
             .then_some(app.end_part);
         let format_active = focus == Focus::RightTop && app.active_input == InputField::Format;
+        let fps_active_cursor = (focus == Focus::RightTop && app.active_input == InputField::Fps)
+            .then_some(app.output_fps_cursor);
         let remove_audio_active =
             focus == Focus::RightTop && app.active_input == InputField::RemoveAudio;
         let output_active_cursor = (focus == Focus::RightTop
@@ -132,6 +134,7 @@ fn render_trim_pane(frame: &mut Frame, app: &App, focus: Focus, area: ratatui::l
             app.output_format,
             format_active,
         ));
+        lines.push(input_line("FPS", &app.output_fps, fps_active_cursor));
         lines.push(checkbox_input_line(
             "Remove audio",
             app.remove_audio,
@@ -274,10 +277,10 @@ fn render_keybinds_popup(frame: &mut Frame) {
         keybind_section("TRIM PANEL"),
         keybind_row("Tab / Shift+Tab", "move through time pieces and fields"),
         keybind_row("h/l", "cycle output format"),
-        keybind_row("Left/Right", "move output cursor"),
+        keybind_row("Left/Right", "move FPS/output cursor"),
         keybind_row("Space", "toggle remove-audio checkbox"),
-        keybind_row("Digits", "edit selected time piece"),
-        keybind_row("Backspace", "clear time piece / delete output char"),
+        keybind_row("Digits", "edit selected time piece or FPS"),
+        keybind_row("Backspace", "clear time piece / delete FPS/output char"),
         keybind_row("Enter", "run ffmpeg trim"),
         Line::from(""),
         keybind_section("FFMPEG OUTPUT"),
